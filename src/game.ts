@@ -86,6 +86,32 @@ function chromaKeyGreen(img: HTMLImageElement): HTMLCanvasElement {
   return c;
 }
 
+/** Chroma-key near-black background (for Deutz green tractor on black). */
+function chromaKeyBlack(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, c.width, c.height);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+    const a = d[i + 3];
+    if (a < 8) continue;
+    const maxc = Math.max(r, g, b);
+    const mean = (r + g + b) / 3;
+    // Pure / near-black studio backdrop
+    if (maxc < 28 || (mean < 22 && maxc < 40)) {
+      d[i + 3] = 0;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return c;
+}
+
 export class FarmGame {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -107,9 +133,11 @@ export class FarmGame {
    * Canvas +angle = clockwise (Y-down).
    */
   private implementHitchRot: Partial<Record<ImplementId, number>> = {
-    plug: Math.PI / 2,
-    balirka: Math.PI / 2,
-    ovijalka: -Math.PI / 2,
+    // Extra Z rotation so hitch tongue faces tractor (local +Y after hitch translate).
+    plug: Math.PI,
+    balirka: Math.PI,
+    ovijalka: 0,
+    krmilnik: 0,
   };
   private ready = false;
 
@@ -124,6 +152,7 @@ export class FarmGame {
   private tractor = { x: 720, y: 520, angle: -Math.PI / 2 };
   private speed = TRACTOR_SPEED;
   private bouncePhase = 0;
+  private wheelPhase = 0;
   private moving = false;
 
   /** World-space camera center (smooth follow). */
@@ -200,7 +229,7 @@ export class FarmGame {
         loadImage('./ovijalka.png'),
       ]);
       this.mapImg = map;
-      this.tractorImg = chromaKeyGreen(tractor);
+      this.tractorImg = cropTransparent(chromaKeyBlack(tractor));
       this.cowImg = chromaKeyGreen(cow);
       this.implementImgs.plug = cropTransparent(chromaKeyGreen(plug));
       this.implementImgs.balirka = cropTransparent(chromaKeyGreen(balirka));
@@ -208,7 +237,7 @@ export class FarmGame {
       try {
         const krm = await loadImage('./krmilnik.png');
         this.implementImgs.krmilnik = cropTransparent(chromaKeyGreen(krm));
-        this.implementHitchRot.krmilnik = Math.PI / 2;
+        this.implementHitchRot.krmilnik = 0;
       } catch {
         /* keep drawn trough icon */
       }
@@ -613,6 +642,7 @@ export class FarmGame {
         this.tractor.y += ny * step;
         this.moving = true;
         this.bouncePhase += dt * 16;
+        this.wheelPhase += dt * 10;
 
         const m = 40;
         this.tractor.x = Math.max(m, Math.min(MAP_W - m, this.tractor.x));
@@ -978,53 +1008,101 @@ export class FarmGame {
   private drawTractor(ctx: CanvasRenderingContext2D): void {
     const { x, y, angle } = this.tractor;
     const size = TRACTOR_DRAW;
-    // Tiny bounce while rolling — no fake spinning wheels on baked sprite
     const bounce = this.moving ? Math.sin(this.bouncePhase) * 1.6 : 0;
     ctx.save();
     ctx.translate(x, y + bounce);
-    // Sprite faces +Y (down / front). atan2 travel → rotate by angle - PI/2
+    // Travel angle → sprite local +Y is forward.
     ctx.rotate(angle - Math.PI / 2);
 
-    // Hitch implement BEHIND tractor (sprite rear = -Y)
+    // Hitch behind (local -Y). Art has hood at PNG top; we flip Y when drawing body.
     this.drawImplement(ctx, size);
+    this.drawWheels(ctx, size);
 
     if (this.tractorImg) {
+      ctx.save();
+      // PNG top = hood/front → flip so hood maps to local +Y (forward).
+      ctx.scale(1, -1);
       ctx.drawImage(this.tractorImg, -size / 2, -size / 2, size, size * 1.05);
+      ctx.restore();
     } else {
-      ctx.fillStyle = '#e53935';
-      ctx.fillRect(-30, -20, 60, 40);
+      // Fallback Deutz-ish green body
+      ctx.fillStyle = '#3d8c3a';
+      ctx.fillRect(-28, -36, 56, 72);
+      ctx.fillStyle = '#263238';
+      ctx.fillRect(-20, -8, 40, 36);
     }
 
     ctx.restore();
   }
 
+  /** Rolling wheel cues under the body (kids see motion). */
+  private drawWheels(ctx: CanvasRenderingContext2D, size: number): void {
+    const wheels: { x: number; y: number; rx: number; ry: number }[] = [
+      { x: -size * 0.28, y: size * 0.22, rx: size * 0.16, ry: size * 0.2 }, // rear L
+      { x: size * 0.28, y: size * 0.22, rx: size * 0.16, ry: size * 0.2 }, // rear R
+      { x: -size * 0.22, y: -size * 0.28, rx: size * 0.11, ry: size * 0.14 }, // front L
+      { x: size * 0.22, y: -size * 0.28, rx: size * 0.11, ry: size * 0.14 }, // front R
+    ];
+    for (const w of wheels) {
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w.rx, w.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#546e7a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w.rx * 0.72, w.ry * 0.72, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Tread ticks rotate with travel
+      ctx.rotate(this.wheelPhase);
+      ctx.strokeStyle = '#90a4ae';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 6; i++) {
+        ctx.rotate(Math.PI / 3);
+        ctx.beginPath();
+        ctx.moveTo(0, -w.ry * 0.85);
+        ctx.lineTo(0, -w.ry * 0.35);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   private drawImplement(ctx: CanvasRenderingContext2D, size: number): void {
     const id = this.selectedImplement;
-    const rear = -size * 0.62;
+    // Behind tractor in local space (art rear after Y-flip of body).
+    const rear = -size * 0.72;
     const img = this.implementImgs[id];
 
     ctx.save();
     ctx.globalAlpha = 0.98;
 
-    ctx.strokeStyle = '#455a64';
-    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = '#37474f';
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, -size * 0.32);
-    ctx.lineTo(0, rear + size * 0.08);
+    ctx.moveTo(0, -size * 0.18);
+    ctx.lineTo(0, rear + size * 0.12);
     ctx.stroke();
+    // Hitch pin
+    ctx.fillStyle = '#90a4ae';
+    ctx.beginPath();
+    ctx.arc(0, rear + size * 0.1, 3.5, 0, Math.PI * 2);
+    ctx.fill();
 
     if (img) {
       const hitchRot = this.implementHitchRot[id] ?? 0;
       const iw = img.width;
       const ih = img.height;
       const maxDim = Math.max(iw, ih);
-      const drawW = size * 0.95 * (iw / maxDim);
-      const drawH = size * 0.95 * (ih / maxDim);
+      const drawW = size * 0.9 * (iw / maxDim);
+      const drawH = size * 0.9 * (ih / maxDim);
       ctx.translate(0, rear);
       ctx.rotate(hitchRot);
-      const hitchNudge = drawH * 0.42;
-      ctx.drawImage(img, -drawW / 2, -drawH / 2 + hitchNudge * 0.15, drawW, drawH);
+      // Nudge so tongue sits on hitch pin
+      ctx.drawImage(img, -drawW / 2, -drawH * 0.15, drawW, drawH);
     } else if (id === 'krmilnik') {
       const hitchY = rear;
       ctx.fillStyle = '#8d6e63';
