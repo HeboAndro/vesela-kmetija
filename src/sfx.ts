@@ -95,3 +95,10 @@ export function sfxFell(): void {
   tone(90, 0.16, 'sine', 0.1, 0, 55);
   tone(200, 0.08, 'triangle', 0.05, 0.05, 80);
 }
+
+/** Slurry splash — soft wet plop. */
+export function sfxSplash(): void {
+  tone(240, 0.07, 'sine', 0.045, 0, 110);
+  tone(160, 0.1, 'triangle', 0.04, 0.04, 70);
+  tone(90, 0.12, 'sine', 0.05, 0.08);
+}

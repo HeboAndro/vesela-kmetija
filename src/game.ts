@@ -3,6 +3,7 @@ import {
   sfxChop,
   sfxFeed,
   sfxFell,
+  sfxSplash,
   sfxSuccess,
   sfxWash,
   sfxWrong,
@@ -57,6 +58,8 @@ interface MeadowCell {
   w: number;
   h: number;
   state: MeadowState;
+  /** Slurry / gnojnica wet manure splash. */
+  manured: boolean;
 }
 
 type CornState = 'empty' | 'planted' | 'chopped';
@@ -218,11 +221,12 @@ export class FarmGame {
   > = {
     // PNG hitch eye calibrated from cropped alpha tip (longAxis fractions)
     plug: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.28 },
-    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.42 },
-    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.48 },
-    zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.45 },
+    sejalnik: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.34 },
+    kosilnica: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.36 },
+    zgrabljalnik: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.34 },
     balirka: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.32 },
     ovijalka: { rot: -Math.PI / 2, offsetX: 0.44, offsetY: 0.0, scale: 1.32 },
+    gnojnica: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.38 },
     krmilnik: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.48 },
     krtaca: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.4 },
     silazer: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.5 },
@@ -254,6 +258,8 @@ export class FarmGame {
   private tractorDirt = 1;
   /** Cooldown so wash splash beep is not every frame. */
   private washSfxCd = 0;
+  /** Cooldown so slurry splash beep is not every frame. */
+  private slurrySfxCd = 0;
 
   private tractor = { x: 680, y: 860, angle: -Math.PI / 2 };
   private speed = TRACTOR_SPEED;
@@ -350,20 +356,30 @@ export class FarmGame {
 
   private async loadAssets(): Promise<void> {
     try {
-      const [map, tractor, cow, plug, balirka, ovijalka] = await Promise.all([
-        loadImage('./mapa.png'),
-        loadImage('./traktor.png'),
-        loadImage('./krava.png'),
-        loadImage('./plug.png'),
-        loadImage('./balirka.png'),
-        loadImage('./ovijalka.png'),
-      ]);
+      const [map, tractor, cow, plug, balirka, ovijalka, gnojnica, sejalnik, kosilnica, zgrabljalnik] =
+        await Promise.all([
+          loadImage('./mapa.png'),
+          loadImage('./traktor.png'),
+          loadImage('./krava.png'),
+          loadImage('./plug.png'),
+          loadImage('./balirka.png'),
+          loadImage('./ovijalka.png'),
+          loadImage('./gnojnica.png'),
+          loadImage('./sejalnik.png'),
+          loadImage('./kosilnica.png'),
+          loadImage('./zgrabljalnik.png'),
+        ]);
       this.mapImg = map;
       this.tractorImg = cropTransparent(chromaKeyBlack(tractor));
       this.cowImg = chromaKeyGreen(cow);
-      this.implementImgs.plug = cropTransparent(chromaKeyBlack(plug));
-      this.implementImgs.balirka = cropTransparent(chromaKeyBlack(balirka));
-      this.implementImgs.ovijalka = cropTransparent(chromaKeyBlack(ovijalka));
+      const keyCrop = (img: HTMLImageElement) => cropTransparent(chromaKeyBlack(img));
+      this.implementImgs.plug = keyCrop(plug);
+      this.implementImgs.balirka = keyCrop(balirka);
+      this.implementImgs.ovijalka = keyCrop(ovijalka);
+      this.implementImgs.gnojnica = keyCrop(gnojnica);
+      this.implementImgs.sejalnik = keyCrop(sejalnik);
+      this.implementImgs.kosilnica = keyCrop(kosilnica);
+      this.implementImgs.zgrabljalnik = keyCrop(zgrabljalnik);
       try {
         const krm = await loadImage('./krmilnik.png');
         this.implementImgs.krmilnik = cropTransparent(chromaKeyGreen(krm));
@@ -442,6 +458,7 @@ export class FarmGame {
           w: mcw,
           h: mch,
           state: 'tall',
+          manured: false,
         });
       }
     }
@@ -500,6 +517,7 @@ export class FarmGame {
     this.bales = [];
     this.tractorDirt = 1;
     this.washSfxCd = 0;
+    this.slurrySfxCd = 0;
 
     // Open barn: two rows of stalls — govedo + ovce mixed, alley in the middle
     const barn = this.zones.find((z) => z.id === 'openBarn')!;
@@ -869,6 +887,7 @@ export class FarmGame {
     const m = this.currentMission();
     if (m.id === 'grain') return this.zones.find((z) => z.id === 'rightField');
     if (m.id === 'hay') return this.zones.find((z) => z.id === 'leftField');
+    if (m.id === 'gnojnica') return this.zones.find((z) => z.id === 'leftField');
     if (m.id === 'koruza') return this.zones.find((z) => z.id === 'cornField');
     if (m.id === 'gozd') {
       if (this.currentImplement() === 'prikolica' && this.trailerLogs > 0) {
@@ -1061,6 +1080,7 @@ export class FarmGame {
   private update(dt: number): void {
     if (this.wrongEquipFlash > 0) this.wrongEquipFlash -= dt;
     if (this.washSfxCd > 0) this.washSfxCd -= dt;
+    if (this.slurrySfxCd > 0) this.slurrySfxCd -= dt;
 
     this.updateAnimals(dt);
     this.updateWanderers(dt);
@@ -1249,6 +1269,9 @@ export class FarmGame {
         else if (impl === 'balirka') this.workBaleMeadow();
         else if (impl === 'ovijalka') this.workWrapMeadow();
         break;
+      case 'gnojnica':
+        if (impl === 'gnojnica') this.workSlurry();
+        break;
       case 'koruza':
         if (impl === 'sejalnik') this.workPlantCorn();
         else if (impl === 'kombajn') this.workChopCorn();
@@ -1263,6 +1286,36 @@ export class FarmGame {
       case 'wash':
         this.workWash();
         break;
+    }
+  }
+
+  /** Spread slurry (gnojnica) over leftField meadow cells. */
+  private workSlurry(): void {
+    let done = 0;
+    let justHit = false;
+    for (const cell of this.meadowCells) {
+      if (!cell.manured && this.tractorHitsCell(cell.x, cell.y, cell.w, cell.h)) {
+        cell.manured = true;
+        justHit = true;
+        this.spawnParticles(cell.x, cell.y, 5, [
+          '#5d4037',
+          '#6d4c41',
+          '#4e342e',
+          '#8d6e63',
+          '#33691e',
+        ], 55);
+      }
+      if (cell.manured) done++;
+    }
+    if (justHit && this.slurrySfxCd <= 0) {
+      sfxSplash();
+      this.slurrySfxCd = 0.22;
+    }
+    this.missionProgress = done / this.meadowCells.length;
+    this.updateHud();
+    if (done >= this.meadowCells.length) {
+      this.missionProgress = 1;
+      this.completePhase();
     }
   }
 
@@ -2151,6 +2204,48 @@ export class FarmGame {
         }
       }
       // baled / wrapped drawn as bales
+
+      // Gnojnica wet manure splash (brown-green sheen) — on top of hay states
+      if (cell.manured) {
+        ctx.fillStyle = 'rgba(62, 48, 28, 0.42)';
+        ctx.fillRect(rx, ry, rw, rh);
+        const g = ctx.createRadialGradient(
+          cell.x - 8,
+          cell.y - 6,
+          4,
+          cell.x,
+          cell.y,
+          Math.max(rw, rh) * 0.55,
+        );
+        g.addColorStop(0, 'rgba(110, 90, 40, 0.35)');
+        g.addColorStop(0.45, 'rgba(70, 90, 35, 0.28)');
+        g.addColorStop(1, 'rgba(45, 55, 25, 0.12)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(cell.x, cell.y, rw * 0.42, rh * 0.38, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        // Wet speckles
+        ctx.fillStyle = 'rgba(55, 40, 22, 0.55)';
+        for (let s = 0; s < 7; s++) {
+          const sx = rx + 8 + ((s * 37 + i * 11) % Math.max(8, Math.floor(rw - 16)));
+          const sy = ry + 8 + ((s * 53 + i * 17) % Math.max(8, Math.floor(rh - 16)));
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, 3 + (s % 3), 2 + (s % 2), 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Glossy wet edge
+        ctx.strokeStyle = 'rgba(140, 160, 70, 0.28)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rx + 2, ry + 2, rw - 4, rh - 4);
+      } else if (this.currentMission().id === 'gnojnica' && !this.gameDone) {
+        // Highlight remaining dry cells during slurry mission
+        const pulse = 0.22 + Math.sin(this.pulse * 2.3 + i * 0.4) * 0.12;
+        ctx.fillStyle = `rgba(160, 120, 60, ${pulse})`;
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.strokeStyle = `rgba(255, 230, 140, ${0.25 + pulse * 0.4})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rx + 1, ry + 1, rw - 2, rh - 2);
+      }
     }
   }
 
@@ -2475,7 +2570,11 @@ export class FarmGame {
     ctx.save();
     ctx.fillStyle = 'rgba(20, 30, 20, 0.22)';
     const shadowLen =
-      id === 'kombajn' ? size * 1.45 : id === 'prikolica' ? size * 0.85 : size * 0.55;
+      id === 'kombajn'
+        ? size * 1.45
+        : id === 'prikolica' || id === 'gnojnica'
+          ? size * 0.85
+          : size * 0.55;
     ctx.beginPath();
     ctx.ellipse(0, rear - shadowLen * 0.35, size * 0.32, size * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -2930,6 +3029,65 @@ export class FarmGame {
       }
       wheel(-22, -8, 7.5);
       wheel(22, -8, 7.5);
+      return;
+    }
+    if (id === "gnojnica") {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.beginPath();
+      ctx.ellipse(0, -28, 30, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // splash pipes (trailing −Y)
+      ctx.fillStyle = "#546e7a";
+      roundRectPath(ctx, -28, -78, 56, 10, 3);
+      ctx.fill();
+      for (let i = -2; i <= 2; i++) {
+        const x = i * 11;
+        ctx.strokeStyle = "#78909c";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x, -72);
+        ctx.lineTo(x, -92);
+        ctx.stroke();
+        ctx.fillStyle = "#5d4037";
+        ctx.beginPath();
+        ctx.ellipse(x, -94, 3.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // red tanker body
+      const tank = ctx.createLinearGradient(-28, -70, 28, -10);
+      tank.addColorStop(0, "#b71c1c");
+      tank.addColorStop(0.4, "#e53935");
+      tank.addColorStop(1, "#8e0000");
+      ctx.fillStyle = tank;
+      roundRectPath(ctx, -28, -68, 56, 48, 14);
+      ctx.fill();
+      ctx.fillStyle = "#ef5350";
+      roundRectPath(ctx, -22, -62, 24, 12, 8);
+      ctx.fill();
+      // green farm stripe
+      ctx.fillStyle = "#2e7d32";
+      roundRectPath(ctx, -24, -42, 48, 8, 3);
+      ctx.fill();
+      ctx.fillStyle = "#81c784";
+      roundRectPath(ctx, -22, -40, 18, 4, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fdd835";
+      roundRectPath(ctx, -22, -28, 44, 5, 2);
+      ctx.fill();
+      // hatch
+      ctx.fillStyle = "#455a64";
+      ctx.beginPath();
+      ctx.arc(0, -52, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#90a4ae";
+      ctx.beginPath();
+      ctx.arc(0, -52, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#37474f";
+      roundRectPath(ctx, -24, -22, 48, 10, 3);
+      ctx.fill();
+      wheel(-16, -8, 8);
+      wheel(16, -8, 8);
       return;
     }
     if (id === "plug") {

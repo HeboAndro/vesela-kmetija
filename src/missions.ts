@@ -1,4 +1,11 @@
-export type MissionId = 'grain' | 'hay' | 'koruza' | 'gozd' | 'feed' | 'wash';
+export type MissionId =
+  | 'grain'
+  | 'hay'
+  | 'gnojnica'
+  | 'koruza'
+  | 'gozd'
+  | 'feed'
+  | 'wash';
 
 export type ImplementId =
   | 'plug'
@@ -7,6 +14,7 @@ export type ImplementId =
   | 'zgrabljalnik'
   | 'balirka'
   | 'ovijalka'
+  | 'gnojnica'
   | 'silazer'
   | 'kombajn'
   | 'zaga'
@@ -43,6 +51,7 @@ export const IMPLEMENTS: {
   { id: 'zgrabljalnik', label: 'Zgrabljalnik', shortLabel: 'Zgrabl.', emoji: '🧹' },
   { id: 'balirka', label: 'Balirka', shortLabel: 'Balir.', emoji: '🟡' },
   { id: 'ovijalka', label: 'Ovijalka', shortLabel: 'Ovija.', emoji: '🟢' },
+  { id: 'gnojnica', label: 'Gnojnica', shortLabel: 'Gnojn.', emoji: '🟤' },
   { id: 'kombajn', label: 'Kombajn', shortLabel: 'Komb.', emoji: '🚜' },
   { id: 'zaga', label: 'Žaga', shortLabel: 'Žaga', emoji: '🪚' },
   { id: 'prikolica', label: 'Prikolica', shortLabel: 'Prikol.', emoji: '🪵' },
@@ -90,6 +99,17 @@ export const MISSIONS: Mission[] = [
       {
         implement: 'ovijalka',
         hint: 'Ovijalka: ovij bale v zeleno folijo.',
+      },
+    ],
+  },
+  {
+    id: 'gnojnica',
+    title: 'Vožnja gnojnice na travnik',
+    success: 'Travnik je pognojen z gnojnico!',
+    phases: [
+      {
+        implement: 'gnojnica',
+        hint: 'Gnojnica: razvoz gnojnice po travniku.',
       },
     ],
   },
