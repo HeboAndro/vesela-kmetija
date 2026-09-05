@@ -17,7 +17,7 @@ export type ImplementId =
   | 'gnojnica'
   | 'silazer'
   | 'kombajn'
-  | 'zaga'
+  | 'vitla'
   | 'prikolica'
   | 'krmilnik'
   | 'krtaca';
@@ -53,7 +53,7 @@ export const IMPLEMENTS: {
   { id: 'ovijalka', label: 'Ovijalka', shortLabel: 'Ovija.', emoji: '🟢' },
   { id: 'gnojnica', label: 'Gnojnica', shortLabel: 'Gnojn.', emoji: '🟤' },
   { id: 'kombajn', label: 'Kombajn', shortLabel: 'Komb.', emoji: '🚜' },
-  { id: 'zaga', label: 'Žaga', shortLabel: 'Žaga', emoji: '🪚' },
+  { id: 'vitla', label: 'Vitla', shortLabel: 'Vitla', emoji: '🪵' },
   { id: 'prikolica', label: 'Prikolica', shortLabel: 'Prikol.', emoji: '🪵' },
   { id: 'krmilnik', label: 'Krmilnik', shortLabel: 'Krmil.', emoji: '🐄' },
   { id: 'krtaca', label: 'Krtača', shortLabel: 'Krtača', emoji: '🧽' },
@@ -135,8 +135,8 @@ export const MISSIONS: Mission[] = [
     success: 'Hlodi so na dvorišču pri hlevu!',
     phases: [
       {
-        implement: 'zaga',
-        hint: 'Žaga: podri nekaj dreves v gozdu.',
+        implement: 'vitla',
+        hint: 'Vitla: podri nekaj dreves v gozdu (žaga na vitli).',
         phaseDone: 'Drevesa so podrta! Naloži hlode na prikolico.',
       },
       {

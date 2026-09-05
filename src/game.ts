@@ -115,7 +115,7 @@ interface FxParticle {
 /** Playable world / mapa.png size (full-bleed). */
 const MAP_W = 1920;
 const MAP_H = 1280;
-const TRACTOR_DRAW = 118;
+const TRACTOR_DRAW = 112;
 /** Half tractor footprint — expand cell hit boxes so driving across always marks. */
 const CELL_HIT_EXPAND = TRACTOR_DRAW * 0.5;
 const COW_DRAW = 72;
@@ -206,35 +206,29 @@ export class FarmGame {
   /** Chroma-keyed implement sprites (plug/balirka/ovijalka; black bg). */
   private implementImgs: Partial<Record<ImplementId, HTMLCanvasElement>> = {};
   /**
-   * Per-implement hitch tune (after translate to rear pin).
-   * Side-view sprites: hitch tongue on image LEFT, machine faces RIGHT.
-   * Tractor local: +X = forward (hood), −X = rear hitch.
-   * offsetX/offsetY are fractions of longAxis in image space after rot:
-   *   offsetX pulls hitch eye onto the pin (typically negative).
-   *   offsetY fine-tunes vertical align to tractor hitch height.
-   * Canvas +angle = clockwise (Y-down).
+   * Uniform hitch — no per-PNG eye calibration (that kept breaking).
+   * Canvas fallbacks are authored with hitch at +Y (toward tractor), body −Y.
+   * If a PNG is drawn, it uses the same rot=0 / centered placement.
    */
   private hitchTune: Record<
     ImplementId,
     { rot: number; offsetY: number; offsetX?: number; scale: number }
   > = {
-    // Side-view PNGs: hitch tongue on image LEFT, body faces RIGHT.
-    // Local tractor space: +X forward, −X rear hitch. Usually rot=0.
-    // offsetX (longAxis fraction) pulls hitch eye onto the pin (negative = left).
-    plug: { rot: 0, offsetX: -0.46, offsetY: 0.08, scale: 1.15 },
-    sejalnik: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.12 },
-    kosilnica: { rot: 0, offsetX: -0.44, offsetY: 0.1, scale: 1.18 },
-    zgrabljalnik: { rot: 0, offsetX: -0.44, offsetY: 0.06, scale: 1.14 },
-    balirka: { rot: 0, offsetX: -0.48, offsetY: 0.06, scale: 1.2 },
-    ovijalka: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.18 },
-    gnojnica: { rot: 0, offsetX: -0.46, offsetY: 0.05, scale: 1.22 },
-    krmilnik: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.1 },
-    krtaca: { rot: 0, offsetX: -0.44, offsetY: 0.06, scale: 1.08 },
-    silazer: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.2 },
-    kombajn: { rot: 0, offsetX: -0.48, offsetY: 0.04, scale: 1.35 },
-    zaga: { rot: 0, offsetX: -0.44, offsetY: 0.08, scale: 1.12 },
-    prikolica: { rot: 0, offsetX: -0.48, offsetY: 0.05, scale: 1.28 },
+    plug: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    balirka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    kombajn: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    krtaca: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    vitla: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
   };
+
   private ready = false;
 
   private zones: Zone[] = [];
@@ -372,7 +366,7 @@ export class FarmGame {
         prikolica,
         krmilnik,
         krtaca,
-        zaga,
+        vitla,
       ] = await Promise.all([
         loadImage('./mapa.png'),
         loadImage('./traktor.png'),
@@ -388,7 +382,7 @@ export class FarmGame {
         loadImage('./prikolica.png'),
         loadImage('./krmilnik.png'),
         loadImage('./krtaca.png'),
-        loadImage('./zaga.png'),
+        loadImage('./vitla.png'),
       ]);
       this.mapImg = map;
       this.tractorImg = cropTransparent(chromaKeyBlack(tractor));
@@ -405,7 +399,7 @@ export class FarmGame {
       this.implementImgs.prikolica = keyCrop(prikolica);
       this.implementImgs.krmilnik = keyCrop(krmilnik);
       this.implementImgs.krtaca = keyCrop(krtaca);
-      this.implementImgs.zaga = keyCrop(zaga);
+      this.implementImgs.vitla = keyCrop(vitla);
       this.ready = true;
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
@@ -1297,7 +1291,7 @@ export class FarmGame {
         else if (impl === 'kombajn') this.workChopCorn();
         break;
       case 'gozd':
-        if (impl === 'zaga') this.workFellTrees();
+        if (impl === 'vitla') this.workFellTrees();
         else if (impl === 'prikolica') this.workHaulLogs();
         break;
       case 'feed':
@@ -2504,62 +2498,62 @@ export class FarmGame {
     const { x, y, angle } = this.tractor;
     const size = TRACTOR_DRAW;
     const bounce = this.moving ? Math.sin(this.bouncePhase) * 1.6 : 0;
+    // Hitch pin always on centerline, fixed behind tractor.
+    const rear = -size * 0.55;
 
-    // Soft ground shadow under wheels only (world-aligned oval)
+    // Soft shadow under only.
     ctx.save();
-    ctx.translate(x, y + 14);
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.32)';
+    ctx.translate(x, y + 8);
+    ctx.rotate(angle - Math.PI / 2);
+    ctx.fillStyle = 'rgba(20, 30, 20, 0.28)';
     ctx.beginPath();
-    ctx.ellipse(0, 0, size * 0.55, size * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 4, size * 0.38, size * 0.13, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     ctx.save();
     ctx.translate(x, y + bounce);
-    // Side-view: sprite faces +X. Travel angle from atan2 matches rotate(angle).
-    ctx.rotate(angle);
-    // When facing left, flip Y after rotate so wheels stay "ground-down".
-    if (Math.cos(angle) < 0) {
-      ctx.scale(1, -1);
-    }
+    // Travel angle → local +Y forward.
+    ctx.rotate(angle - Math.PI / 2);
 
-    // Hitch / implement behind tractor along local −X
-    this.drawImplement(ctx, size);
+    // Hitch behind on local −Y (centered).
+    this.drawImplement(ctx, size, rear);
 
     if (this.tractorImg) {
+      ctx.save();
+      // Iso hood → local +Y forward (simplest fixed base rot; no art nudge).
+      const spriteBaseRot = Math.PI / 2;
+      ctx.rotate(spriteBaseRot);
       const iw = this.tractorImg.width || size;
       const ih = this.tractorImg.height || size;
       const aspect = iw / Math.max(1, ih);
-      const drawH = size;
-      const drawW = size * Math.min(2.05, Math.max(1.35, aspect));
-      // No top-down Y-flip — side silhouette already faces +X.
+      const drawH = size * 1.05;
+      const drawW = drawH * Math.min(1.35, Math.max(1.05, aspect));
       ctx.drawImage(this.tractorImg, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
     } else {
-      // Fallback Deutz-ish side body
+      // Fallback Deutz-ish green body (iso-ish block)
       ctx.fillStyle = '#3f8f3a';
-      ctx.fillRect(-size * 0.55, -size * 0.28, size * 1.05, size * 0.5);
-      ctx.fillStyle = '#eceff1';
-      ctx.fillRect(-size * 0.05, -size * 0.42, size * 0.38, size * 0.2);
-      ctx.fillStyle = '#212121';
-      ctx.beginPath();
-      ctx.arc(-size * 0.28, size * 0.22, size * 0.26, 0, Math.PI * 2);
-      ctx.arc(size * 0.32, size * 0.28, size * 0.16, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(-28, -36, 56, 72);
+      ctx.fillStyle = '#2a6628';
+      ctx.fillRect(-28, -36, 10, 72);
+      ctx.fillStyle = '#263238';
+      ctx.fillRect(-20, -8, 40, 36);
     }
 
-    // Dirt overlay (washes off in pond)
+    // Dirt: subtle mud only near wheels / lower chassis — never cabin/hood
     if (this.tractorDirt > 0.02) {
-      const a = 0.18 + this.tractorDirt * 0.42;
+      const a = Math.min(0.12, 0.035 + this.tractorDirt * 0.085);
       ctx.save();
       ctx.globalAlpha = a;
       ctx.fillStyle = '#5d4037';
-      roundRectPath(ctx, -size * 0.55, -size * 0.3, size * 1.05, size * 0.52, 10);
-      ctx.fill();
-      ctx.fillStyle = '#3e2723';
       ctx.beginPath();
-      ctx.ellipse(-size * 0.15, size * 0.05, 10, 5, 0.2, 0, Math.PI * 2);
-      ctx.ellipse(size * 0.2, -size * 0.05, 8, 4, -0.2, 0, Math.PI * 2);
-      ctx.ellipse(0, size * 0.18, 12, 4, 0, 0, Math.PI * 2);
+      // rear/side wheel mud (local −Y is hitch/rear; stay low on chassis)
+      ctx.ellipse(-size * 0.26, size * 0.22, 10, 5.5, 0.25, 0, Math.PI * 2);
+      ctx.ellipse(size * 0.26, size * 0.22, 10, 5.5, -0.25, 0, Math.PI * 2);
+      ctx.ellipse(-size * 0.2, size * 0.32, 8, 4.5, 0.1, 0, Math.PI * 2);
+      ctx.ellipse(size * 0.2, size * 0.32, 8, 4.5, -0.1, 0, Math.PI * 2);
+      ctx.ellipse(0, size * 0.3, 12, 4, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -2567,79 +2561,76 @@ export class FarmGame {
     ctx.restore();
   }
 
-  /** Hitch implement behind tractor (local −X). */
-  private drawImplement(ctx: CanvasRenderingContext2D, size: number): void {
+  /** Hitch implement behind tractor (local −Y, pin at rear). */
+  private drawImplement(ctx: CanvasRenderingContext2D, size: number, rear = -size * 0.55): void {
     const id = this.selectedImplement;
-    const rear = -size * 0.62;
-    const img = this.implementImgs[id];
     const tune = this.hitchTune[id];
 
     ctx.save();
     ctx.globalAlpha = 0.98;
 
-    // Soft drop shadow under implement wheels (local space)
+    // Soft shadow under implement only.
     ctx.save();
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.22)';
+    ctx.fillStyle = 'rgba(20, 30, 20, 0.18)';
     const shadowLen =
       id === 'kombajn'
-        ? size * 1.35
+        ? size * 1.1
         : id === 'prikolica' || id === 'gnojnica'
-          ? size * 0.95
-          : size * 0.65;
+          ? size * 0.7
+          : size * 0.45;
     ctx.beginPath();
-    ctx.ellipse(rear - shadowLen * 0.35, size * 0.28, shadowLen * 0.45, size * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, rear - shadowLen * 0.35, size * 0.26, size * 0.09, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Short hitch tongue from under body to rear pin (along −X)
-    ctx.strokeStyle = '#37474f';
-    ctx.lineWidth = 4;
+    // Clean centerline hitch tongue (drawn under tractor body)
+    ctx.strokeStyle = '#455a64';
+    ctx.lineWidth = 3.2;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(-size * 0.18, size * 0.12);
-    ctx.lineTo(rear, size * 0.12);
+    ctx.moveTo(0, -size * 0.06);
+    ctx.lineTo(0, rear);
+    ctx.stroke();
+    // subtle highlight on tongue
+    ctx.strokeStyle = 'rgba(176, 190, 197, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-1.2, -size * 0.05);
+    ctx.lineTo(-1.2, rear + 1);
     ctx.stroke();
     // Hitch pin
-    ctx.fillStyle = '#90a4ae';
+    ctx.fillStyle = '#78909c';
     ctx.beginPath();
-    ctx.arc(rear, size * 0.12, 3.5, 0, Math.PI * 2);
+    ctx.arc(0, rear, 3.2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#37474f';
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(-size * 0.16, size * 0.1);
-    ctx.lineTo(rear + 1, size * 0.1);
+    ctx.arc(0, rear, 3.2, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.fillStyle = '#cfd8dc';
+    ctx.beginPath();
+    ctx.arc(0, rear, 1.3, 0, Math.PI * 2);
+    ctx.fill();
 
-    // All implement drawing relative to hitch pin
-    ctx.translate(rear, size * 0.12);
+    // All implement drawing is relative to hitch pin on centerline
+    ctx.translate(0, rear);
 
-    if (img) {
-      const iw = img.width;
-      const ih = img.height;
-      const maxDim = Math.max(iw, ih);
-      const scale = tune.scale;
-      const drawW = size * scale * (iw / maxDim);
-      const drawH = size * scale * (ih / maxDim);
-      const longAxis = Math.max(drawW, drawH);
-      ctx.rotate(tune.rot);
-      ctx.translate((tune.offsetX ?? 0) * longAxis, tune.offsetY * longAxis);
-      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
-    } else {
-      const s = tune.scale;
-      const longAxis = size * s;
-      ctx.rotate(tune.rot);
-      ctx.translate((tune.offsetX ?? 0) * longAxis, tune.offsetY * longAxis);
-      ctx.scale(s, s);
-      this.drawFallbackImplement(ctx, id);
-    }
+    // Prefer canvas fallbacks (authored hitch at +Y). Skip PNG eye-math.
+    // Toolbar still uses chroma-keyed PNGs separately.
+    const s = tune.scale;
+    const longAxis = size * s;
+    ctx.rotate(tune.rot);
+    ctx.translate((tune.offsetX ?? 0) * longAxis, tune.offsetY * longAxis);
+    ctx.scale(s, s);
+    this.drawFallbackImplement(ctx, id);
 
     ctx.restore();
   }
 
   /**
    * Kids-game canvas icons when no PNG is available.
-   * Side-view: hitch pin at (0,0); tongue toward +X (tractor); body trails in −X.
+   * Hitch pin at (0,0); tongue toward +Y (tractor); body trails in -Y.
    * Drawn at ~unit size; hitchTune.scale applied by caller.
    */
   private drawFallbackImplement(ctx: CanvasRenderingContext2D, id: ImplementId): void {
@@ -2647,27 +2638,27 @@ export class FarmGame {
     ctx.lineWidth = 3.5;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(10, 0);
-    ctx.lineTo(-6, 0);
+    ctx.moveTo(0, 8);
+    ctx.lineTo(0, -8);
     ctx.stroke();
     ctx.fillStyle = "#607d8b";
     ctx.beginPath();
-    ctx.moveTo(2, 0);
-    ctx.lineTo(-10, -9);
-    ctx.lineTo(-10, 9);
+    ctx.moveTo(0, 2);
+    ctx.lineTo(-9, -10);
+    ctx.lineTo(9, -10);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "#b0bec5";
     ctx.beginPath();
-    ctx.arc(6, 0, 3.2, 0, Math.PI * 2);
+    ctx.arc(0, 5, 3.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#546e7a";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(2, -8);
-    ctx.lineTo(-10, -5);
-    ctx.moveTo(2, 8);
-    ctx.lineTo(-10, 5);
+    ctx.moveTo(-8, 2);
+    ctx.lineTo(-5, -10);
+    ctx.moveTo(8, 2);
+    ctx.lineTo(5, -10);
     ctx.stroke();
 
     const wheel = (x: number, y: number, r: number) => {
@@ -2979,26 +2970,62 @@ export class FarmGame {
       ctx.restore();
       return;
     }
-    if (id === "zaga") {
-      ctx.fillStyle = "#37474f";
-      roundRectPath(ctx, -12, -38, 24, 24, 4);
+    if (id === "vitla") {
+      // Forestry winch (vitla) — frame + drum, chainsaw (žaga) mounted on top
+      ctx.fillStyle = "#455a64";
+      roundRectPath(ctx, -18, -42, 36, 28, 4);
       ctx.fill();
-      ctx.fillStyle = "#ef6c00";
-      roundRectPath(ctx, -10, -36, 20, 12, 3);
+      // winch drum
+      ctx.fillStyle = "#78909c";
+      roundRectPath(ctx, -14, -38, 28, 18, 8);
       ctx.fill();
-      ctx.fillStyle = "#90a4ae";
-      roundRectPath(ctx, -5, -60, 10, 26, 2);
-      ctx.fill();
-      ctx.strokeStyle = "#263238";
-      ctx.lineWidth = 1.5;
-      for (let i = 0; i < 6; i++) {
+      ctx.strokeStyle = "#37474f";
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 5; i++) {
         ctx.beginPath();
-        ctx.moveTo(-3, -56 + i * 4);
-        ctx.lineTo(3, -54 + i * 4);
+        ctx.moveTo(-12, -36 + i * 3.5);
+        ctx.lineTo(12, -36 + i * 3.5);
         ctx.stroke();
       }
-      wheel(-14, -6, 5.5);
-      wheel(14, -6, 5.5);
+      // cable fairlead toward hitch (+Y)
+      ctx.strokeStyle = "#263238";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -18);
+      ctx.lineTo(0, -6);
+      ctx.stroke();
+      ctx.fillStyle = "#90a4ae";
+      ctx.beginPath();
+      ctx.arc(0, -6, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Deutz-ish green chassis stripe
+      ctx.fillStyle = "#2e7d32";
+      roundRectPath(ctx, -16, -44, 32, 5, 2);
+      ctx.fill();
+      // chainsaw / žaga mounted on top of winch
+      ctx.fillStyle = "#ef6c00";
+      roundRectPath(ctx, -8, -58, 16, 14, 3);
+      ctx.fill();
+      ctx.fillStyle = "#37474f";
+      roundRectPath(ctx, -3, -72, 6, 16, 1);
+      ctx.fill();
+      ctx.strokeStyle = "#212121";
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-2, -70 + i * 3.5);
+        ctx.lineTo(2, -68 + i * 3.5);
+        ctx.stroke();
+      }
+      // orange handle bar
+      ctx.strokeStyle = "#bf360c";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-10, -52);
+      ctx.lineTo(10, -52);
+      ctx.stroke();
+      wheel(-16, -8, 6);
+      wheel(16, -8, 6);
       return;
     }
     if (id === "prikolica") {
