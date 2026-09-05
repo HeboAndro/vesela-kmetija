@@ -407,3 +407,115 @@ body {
     bottom: max(1.2rem, env(safe-area-inset-bottom));
   }
 }
+
+
+/* Tractor picker — kids-friendly strip */
+#tractor-bar {
+  position: absolute;
+  z-index: 22;
+  left: max(0.45rem, env(safe-area-inset-left));
+  top: max(0.55rem, calc(env(safe-area-inset-top) + 7.6rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0.4rem 0.4rem;
+  border-radius: 0.85rem;
+  background: rgba(12, 22, 16, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
+  max-width: min(11.5rem, calc(100vw - 1rem));
+}
+
+.tractor-bar-label {
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  opacity: 0.95;
+  padding: 0 0.15rem;
+}
+
+.tractor-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.28rem;
+}
+
+.tractor-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 3.1rem;
+  padding: 0.25rem 0.2rem 0.2rem;
+  border: 2px solid transparent;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tractor-btn:active {
+  transform: scale(0.96);
+}
+
+.tractor-btn.active {
+  border-color: #ffd54f;
+  background: rgba(255, 213, 79, 0.28);
+  box-shadow: 0 0 0 1px rgba(255, 213, 79, 0.35);
+}
+
+.tractor-btn .tractor-thumb {
+  width: 2.35rem;
+  height: 1.55rem;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.tractor-btn .tractor-name {
+  font-size: 0.52rem;
+  font-weight: 700;
+  line-height: 1.05;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 1024px) {
+  #tractor-bar {
+    top: max(0.7rem, calc(env(safe-area-inset-top) + 0.4rem));
+    left: max(0.7rem, calc(env(safe-area-inset-left) + 17.2rem));
+    max-width: 18rem;
+  }
+
+  .tractor-choices {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .tractor-btn {
+    min-height: 3.4rem;
+  }
+
+  .tractor-btn .tractor-thumb {
+    width: 2.7rem;
+    height: 1.7rem;
+  }
+
+  .tractor-btn .tractor-name {
+    font-size: 0.58rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  #mission-card {
+    width: min(14.5rem, calc(100vw - 5.5rem));
+  }
+}

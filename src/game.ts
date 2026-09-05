@@ -125,6 +125,67 @@ const TRACTOR_SPEED = 220;
 const VIEW_FRAC = 0.62;
 const CAM_LERP = 5.5;
 
+type TractorId = 'deutz' | 'goldoni' | 'utb' | 'torpedo';
+
+interface TractorDef {
+  id: TractorId;
+  label: string;
+  shortLabel: string;
+  src: string;
+  /** Draw size multiplier vs TRACTOR_DRAW (Goldoni smaller, Torpedo larger). */
+  scale: number;
+  /** true = studio black backdrop needs edge flood at load. */
+  chromaBlack: boolean;
+}
+
+const TRACTORS: TractorDef[] = [
+  {
+    id: 'deutz',
+    label: 'Deutz Agrotron',
+    shortLabel: 'Deutz',
+    src: './tractor-deutz.png',
+    scale: 1,
+    chromaBlack: true,
+  },
+  {
+    id: 'goldoni',
+    label: 'Goldoni Universal 230',
+    shortLabel: 'Goldoni',
+    src: './tractor-goldoni.png',
+    scale: 0.86,
+    chromaBlack: false,
+  },
+  {
+    id: 'utb',
+    label: 'UTB Universal 643 DT',
+    shortLabel: 'UTB 643',
+    src: './tractor-utb.png',
+    scale: 1.02,
+    chromaBlack: false,
+  },
+  {
+    id: 'torpedo',
+    label: 'Torpedo RX 120',
+    shortLabel: 'Torpedo',
+    src: './tractor-torpedo.png',
+    scale: 1.14,
+    chromaBlack: false,
+  },
+];
+
+const TRACTOR_STORAGE_KEY = 'vesela-kmetija-traktor';
+
+function loadSavedTractorId(): TractorId {
+  try {
+    const v = localStorage.getItem(TRACTOR_STORAGE_KEY);
+    if (v && TRACTORS.some((t) => t.id === v)) return v as TractorId;
+  } catch {
+    /* ignore */
+  }
+  return 'deutz';
+}
+
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -234,6 +295,10 @@ export class FarmGame {
 
   private mapImg: HTMLImageElement | null = null;
   private tractorImg: HTMLCanvasElement | HTMLImageElement | null = null;
+  /** All selectable tractor sprites (chroma/cropped). */
+  private tractorImgs: Partial<Record<TractorId, HTMLCanvasElement>> = {};
+  private selectedTractor: TractorId = loadSavedTractorId();
+  private tractorChoicesEl: HTMLElement;
   private cowImg: HTMLCanvasElement | HTMLImageElement | null = null;
   /** Chroma-keyed implement sprites (plug/balirka/ovijalka; black bg). */
   private implementImgs: Partial<Record<ImplementId, HTMLCanvasElement>> = {};
@@ -349,6 +414,7 @@ export class FarmGame {
     this.starsCountEl = document.getElementById('stars-count')!;
     this.toastEl = document.getElementById('toast')!;
     this.implementBar = document.getElementById('implement-bar')!;
+    this.tractorChoicesEl = document.getElementById('tractor-choices')!;
     this.restartBtn = document.getElementById('restart-btn') as HTMLButtonElement;
     this.restartBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -376,6 +442,7 @@ export class FarmGame {
 
     this.buildWorld();
     this.buildImplementBar();
+    this.buildTractorBar();
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -387,7 +454,6 @@ export class FarmGame {
     try {
       const [
         map,
-        tractor,
         cow,
         plug,
         balirka,
@@ -401,9 +467,9 @@ export class FarmGame {
         krmilnik,
         krtaca,
         vitla,
+        ...tractorRaws
       ] = await Promise.all([
         loadImage('./mapa.png'),
-        loadImage('./traktor.png'),
         loadImage('./krava.png'),
         loadImage('./plug.png'),
         loadImage('./balirka.png'),
@@ -417,10 +483,26 @@ export class FarmGame {
         loadImage('./krmilnik.png'),
         loadImage('./krtaca.png'),
         loadImage('./vitla.png'),
+        ...TRACTORS.map((t) => loadImage(t.src)),
       ]);
       this.mapImg = map;
-      this.tractorImg = cropTransparent(chromaKeyBlack(tractor));
       this.cowImg = chromaKeyGreen(cow);
+      for (let i = 0; i < TRACTORS.length; i++) {
+        const def = TRACTORS[i];
+        const raw = tractorRaws[i] as HTMLImageElement;
+        const keyed = def.chromaBlack ? chromaKeyBlack(raw) : canvasFromImage(raw);
+        this.tractorImgs[def.id] = cropTransparent(keyed);
+      }
+      // Fallback: keep legacy traktor.png path if Deutz file missing processed ok
+      if (!this.tractorImgs.deutz) {
+        try {
+          const legacy = await loadImage('./traktor.png');
+          this.tractorImgs.deutz = cropTransparent(chromaKeyBlack(legacy));
+        } catch {
+          /* ignore */
+        }
+      }
+      this.applySelectedTractor();
       const keyCrop = (img: HTMLImageElement) => cropTransparent(chromaKeyBlack(img));
       this.implementImgs.plug = keyCrop(plug);
       this.implementImgs.balirka = keyCrop(balirka);
@@ -438,6 +520,7 @@ export class FarmGame {
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
       this.refreshImplementBar();
+      this.refreshTractorBar();
       this.updateHud();
       this.announceMission();
     } catch (err) {
@@ -682,6 +765,67 @@ export class FarmGame {
   private buildImplementBar(): void {
     this.rebuildImplementBar();
   }
+
+  private buildTractorBar(): void {
+    this.tractorChoicesEl.innerHTML = '';
+    for (const item of TRACTORS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tractor-btn';
+      btn.dataset.id = item.id;
+      btn.setAttribute('aria-label', item.label);
+      btn.innerHTML = `<img class="tractor-thumb" alt="" src="${item.src}" /><span class="tractor-name">${item.shortLabel}</span>`;
+      let lastPtrPick = 0;
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        lastPtrPick = performance.now();
+        unlockSpeech();
+        unlockSfx();
+        this.selectTractor(item.id);
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (performance.now() - lastPtrPick < 450) return;
+        unlockSpeech();
+        unlockSfx();
+        this.selectTractor(item.id);
+      });
+      this.tractorChoicesEl.appendChild(btn);
+    }
+    this.refreshTractorBar();
+  }
+
+  private selectTractor(id: TractorId): void {
+    if (!TRACTORS.some((t) => t.id === id)) return;
+    this.selectedTractor = id;
+    this.applySelectedTractor();
+    this.refreshTractorBar();
+    try {
+      localStorage.setItem(TRACTOR_STORAGE_KEY, id);
+    } catch {
+      /* ignore */
+    }
+    const label = TRACTORS.find((t) => t.id === id)?.label ?? id;
+    this.showToast(`Traktor: ${label}`, 1400);
+  }
+
+  private applySelectedTractor(): void {
+    this.tractorImg = this.tractorImgs[this.selectedTractor] ?? null;
+  }
+
+  private refreshTractorBar(): void {
+    const buttons = this.tractorChoicesEl.querySelectorAll<HTMLButtonElement>('.tractor-btn');
+    buttons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.id === this.selectedTractor);
+    });
+  }
+
+  private tractorDrawScale(): number {
+    return TRACTORS.find((t) => t.id === this.selectedTractor)?.scale ?? 1;
+  }
+
 
   /** Show all implements; player must pick the correct one for the phase. */
   private rebuildImplementBar(): void {
@@ -2530,9 +2674,9 @@ export class FarmGame {
 
   private drawTractor(ctx: CanvasRenderingContext2D): void {
     const { x, y, angle } = this.tractor;
-    const size = TRACTOR_DRAW;
+    const size = TRACTOR_DRAW * this.tractorDrawScale();
     const bounce = this.moving ? Math.sin(this.bouncePhase) * 1.6 : 0;
-    // Hitch pin on centerline, short gap behind rear axle.
+    // Hitch pin on centerline, short gap behind rear axle (same math for all).
     const rear = -size * 0.42;
 
     // Soft ground shadow under chassis only (no body-covering blob).
@@ -3344,6 +3488,16 @@ export class FarmGame {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+
+/** Copy image to canvas (already-transparent sprites). */
+function canvasFromImage(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  c.getContext('2d')!.drawImage(img, 0, 0);
+  return c;
 }
 
 /** Trim fully-transparent padding after chroma key. */
