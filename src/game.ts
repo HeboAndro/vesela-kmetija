@@ -336,11 +336,12 @@ export class FarmGame {
     zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.05 },
     gnojnica: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.18 },
     kombajn: { rot: 0, offsetX: 0.18, offsetY: 0.04, scale: 1.12 },
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.22, flip: true },
+    // prikolica mirrored (hitch RIGHT); metla rotated 180° (hitch LEFT → flip).
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.22 },
     krmilnik: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.2, flip: true },
     vitla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.78 },
     silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.0 },
-    metla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.95, front: true },
+    metla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.95, front: true, flip: true },
   };
 
   private ready = false;
@@ -3375,6 +3376,7 @@ export class FarmGame {
     const img = this.implementImgs[id];
     if (img) {
       // Real photo sprites: image +X → local +Y (toward tractor) via +90°.
+      // Hitch must sit on pin: hitch-RIGHT PNGs use -drawW origin; hitch-LEFT + flip use +x extent.
       if (tune.flip) ctx.scale(-1, 1);
       ctx.rotate(Math.PI / 2);
       if (front) ctx.rotate(Math.PI);
@@ -3383,7 +3385,12 @@ export class FarmGame {
       const maxDim = Math.max(iw, ih);
       const drawW = size * s * (iw / maxDim) * 1.25;
       const drawH = size * s * (ih / maxDim) * 1.25;
-      ctx.drawImage(img, -drawW + size * 0.06, -drawH / 2, drawW, drawH);
+      if (tune.flip) {
+        // After scale(-1,1), +x draw puts PNG left (hitch) on pin and body in −Y / forward.
+        ctx.drawImage(img, -size * 0.06, -drawH / 2, drawW, drawH);
+      } else {
+        ctx.drawImage(img, -drawW + size * 0.06, -drawH / 2, drawW, drawH);
+      }
     } else {
       ctx.scale(s, s);
       if (front) ctx.rotate(Math.PI);
