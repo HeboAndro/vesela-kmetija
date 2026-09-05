@@ -115,7 +115,7 @@ interface FxParticle {
 /** Playable world / mapa.png size (full-bleed). */
 const MAP_W = 1920;
 const MAP_H = 1280;
-const TRACTOR_DRAW = 88;
+const TRACTOR_DRAW = 118;
 /** Half tractor footprint — expand cell hit boxes so driving across always marks. */
 const CELL_HIT_EXPAND = TRACTOR_DRAW * 0.5;
 const COW_DRAW = 72;
@@ -207,32 +207,33 @@ export class FarmGame {
   private implementImgs: Partial<Record<ImplementId, HTMLCanvasElement>> = {};
   /**
    * Per-implement hitch tune (after translate to rear pin).
-   * Sprites: hitch ring faces local +Y (toward tractor); body trails in -Y.
-   * plug/balirka hitch on image RIGHT → +PI/2; ovijalka hitch on LEFT → -PI/2.
-   * offsetX/offsetY are fractions of longAxis in *image* space after rot:
-   *   offsetX pulls hitch eye onto the pin along the tongue (side-hitch PNGs).
-   *   offsetY fine-tunes lateral so visual mass sits on tractor centerline (x=0).
-   * Canvas fallbacks use rot=0 with hitch already at (0,0); trail in -Y.
+   * Side-view sprites: hitch tongue on image LEFT, machine faces RIGHT.
+   * Tractor local: +X = forward (hood), −X = rear hitch.
+   * offsetX/offsetY are fractions of longAxis in image space after rot:
+   *   offsetX pulls hitch eye onto the pin (typically negative).
+   *   offsetY fine-tunes vertical align to tractor hitch height.
    * Canvas +angle = clockwise (Y-down).
    */
   private hitchTune: Record<
     ImplementId,
     { rot: number; offsetY: number; offsetX?: number; scale: number }
   > = {
-    // PNG hitch eye calibrated from cropped alpha tip (longAxis fractions)
-    plug: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.28 },
-    sejalnik: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.34 },
-    kosilnica: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.36 },
-    zgrabljalnik: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.34 },
-    balirka: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.32 },
-    ovijalka: { rot: -Math.PI / 2, offsetX: 0.44, offsetY: 0.0, scale: 1.32 },
-    gnojnica: { rot: Math.PI / 2, offsetX: -0.44, offsetY: 0.0, scale: 1.38 },
-    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.48 },
-    krtaca: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.4 },
-    silazer: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.5 },
-    kombajn: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.62 },
-    zaga: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.35 },
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.55 },
+    // Side-view PNGs: hitch tongue on image LEFT, body faces RIGHT.
+    // Local tractor space: +X forward, −X rear hitch. Usually rot=0.
+    // offsetX (longAxis fraction) pulls hitch eye onto the pin (negative = left).
+    plug: { rot: 0, offsetX: -0.46, offsetY: 0.08, scale: 1.15 },
+    sejalnik: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.12 },
+    kosilnica: { rot: 0, offsetX: -0.44, offsetY: 0.1, scale: 1.18 },
+    zgrabljalnik: { rot: 0, offsetX: -0.44, offsetY: 0.06, scale: 1.14 },
+    balirka: { rot: 0, offsetX: -0.48, offsetY: 0.06, scale: 1.2 },
+    ovijalka: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.18 },
+    gnojnica: { rot: 0, offsetX: -0.46, offsetY: 0.05, scale: 1.22 },
+    krmilnik: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.1 },
+    krtaca: { rot: 0, offsetX: -0.44, offsetY: 0.06, scale: 1.08 },
+    silazer: { rot: 0, offsetX: -0.46, offsetY: 0.06, scale: 1.2 },
+    kombajn: { rot: 0, offsetX: -0.48, offsetY: 0.04, scale: 1.35 },
+    zaga: { rot: 0, offsetX: -0.44, offsetY: 0.08, scale: 1.12 },
+    prikolica: { rot: 0, offsetX: -0.48, offsetY: 0.05, scale: 1.28 },
   };
   private ready = false;
 
@@ -261,7 +262,7 @@ export class FarmGame {
   /** Cooldown so slurry splash beep is not every frame. */
   private slurrySfxCd = 0;
 
-  private tractor = { x: 680, y: 860, angle: -Math.PI / 2 };
+  private tractor = { x: 680, y: 860, angle: 0 };
   private speed = TRACTOR_SPEED;
   private bouncePhase = 0;
   private moving = false;
@@ -356,19 +357,39 @@ export class FarmGame {
 
   private async loadAssets(): Promise<void> {
     try {
-      const [map, tractor, cow, plug, balirka, ovijalka, gnojnica, sejalnik, kosilnica, zgrabljalnik] =
-        await Promise.all([
-          loadImage('./mapa.png'),
-          loadImage('./traktor.png'),
-          loadImage('./krava.png'),
-          loadImage('./plug.png'),
-          loadImage('./balirka.png'),
-          loadImage('./ovijalka.png'),
-          loadImage('./gnojnica.png'),
-          loadImage('./sejalnik.png'),
-          loadImage('./kosilnica.png'),
-          loadImage('./zgrabljalnik.png'),
-        ]);
+      const [
+        map,
+        tractor,
+        cow,
+        plug,
+        balirka,
+        ovijalka,
+        gnojnica,
+        sejalnik,
+        kosilnica,
+        zgrabljalnik,
+        kombajn,
+        prikolica,
+        krmilnik,
+        krtaca,
+        zaga,
+      ] = await Promise.all([
+        loadImage('./mapa.png'),
+        loadImage('./traktor.png'),
+        loadImage('./krava.png'),
+        loadImage('./plug.png'),
+        loadImage('./balirka.png'),
+        loadImage('./ovijalka.png'),
+        loadImage('./gnojnica.png'),
+        loadImage('./sejalnik.png'),
+        loadImage('./kosilnica.png'),
+        loadImage('./zgrabljalnik.png'),
+        loadImage('./kombajn.png'),
+        loadImage('./prikolica.png'),
+        loadImage('./krmilnik.png'),
+        loadImage('./krtaca.png'),
+        loadImage('./zaga.png'),
+      ]);
       this.mapImg = map;
       this.tractorImg = cropTransparent(chromaKeyBlack(tractor));
       this.cowImg = chromaKeyGreen(cow);
@@ -380,12 +401,11 @@ export class FarmGame {
       this.implementImgs.sejalnik = keyCrop(sejalnik);
       this.implementImgs.kosilnica = keyCrop(kosilnica);
       this.implementImgs.zgrabljalnik = keyCrop(zgrabljalnik);
-      try {
-        const krm = await loadImage('./krmilnik.png');
-        this.implementImgs.krmilnik = cropTransparent(chromaKeyGreen(krm));
-      } catch {
-        /* keep drawn trough icon */
-      }
+      this.implementImgs.kombajn = keyCrop(kombajn);
+      this.implementImgs.prikolica = keyCrop(prikolica);
+      this.implementImgs.krmilnik = keyCrop(krmilnik);
+      this.implementImgs.krtaca = keyCrop(krtaca);
+      this.implementImgs.zaga = keyCrop(zaga);
       this.ready = true;
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
@@ -2484,55 +2504,47 @@ export class FarmGame {
     const { x, y, angle } = this.tractor;
     const size = TRACTOR_DRAW;
     const bounce = this.moving ? Math.sin(this.bouncePhase) * 1.6 : 0;
-    const hitchExtra =
-      this.selectedImplement === 'kombajn'
-        ? size * 1.55
-        : this.selectedImplement === 'prikolica'
-          ? size * 0.95
-          : size * 0.75;
 
-    // Soft elliptical ground shadow ONLY (under body; never on roof / no skew)
+    // Soft ground shadow under wheels only (world-aligned oval)
     ctx.save();
-    ctx.translate(x, y + 10);
-    ctx.rotate(angle - Math.PI / 2);
-    // Mild oval ground contact under tractor
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.3)';
+    ctx.translate(x, y + 14);
+    ctx.fillStyle = 'rgba(20, 30, 20, 0.32)';
     ctx.beginPath();
-    ctx.ellipse(0, 5, size * 0.44, size * 0.2, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, size * 0.55, size * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.16)';
-    ctx.beginPath();
-    ctx.ellipse(0, -hitchExtra * 0.45, size * 0.36, size * 0.15, 0, 0, Math.PI * 2);
-    ctx.fill();
-    if (this.selectedImplement === 'kombajn') {
-      ctx.beginPath();
-      ctx.ellipse(0, -hitchExtra * 0.95, size * 0.38, size * 0.15, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.restore();
 
     ctx.save();
     ctx.translate(x, y + bounce);
-    // Travel angle -> sprite local +Y is forward. No isometric skew.
-    ctx.rotate(angle - Math.PI / 2);
+    // Side-view: sprite faces +X. Travel angle from atan2 matches rotate(angle).
+    ctx.rotate(angle);
+    // When facing left, flip Y after rotate so wheels stay "ground-down".
+    if (Math.cos(angle) < 0) {
+      ctx.scale(1, -1);
+    }
 
-    // Hitch behind (local -Y). Art has hood at PNG top; we flip Y when drawing body.
+    // Hitch / implement behind tractor along local −X
     this.drawImplement(ctx, size);
 
     if (this.tractorImg) {
-      ctx.save();
-      // PNG top = hood/front → flip so hood maps to local +Y (forward).
-      ctx.scale(1, -1);
-      ctx.drawImage(this.tractorImg, -size / 2, -size / 2, size, size * 1.05);
-      ctx.restore();
+      const iw = this.tractorImg.width || size;
+      const ih = this.tractorImg.height || size;
+      const aspect = iw / Math.max(1, ih);
+      const drawH = size;
+      const drawW = size * Math.min(2.05, Math.max(1.35, aspect));
+      // No top-down Y-flip — side silhouette already faces +X.
+      ctx.drawImage(this.tractorImg, -drawW / 2, -drawH / 2, drawW, drawH);
     } else {
-      // Fallback Deutz-ish green body (clean - no roof-darkening overlay)
+      // Fallback Deutz-ish side body
       ctx.fillStyle = '#3f8f3a';
-      ctx.fillRect(-28, -36, 56, 72);
-      ctx.fillStyle = '#2a6628';
-      ctx.fillRect(-28, -36, 10, 72);
-      ctx.fillStyle = '#263238';
-      ctx.fillRect(-20, -8, 40, 36);
+      ctx.fillRect(-size * 0.55, -size * 0.28, size * 1.05, size * 0.5);
+      ctx.fillStyle = '#eceff1';
+      ctx.fillRect(-size * 0.05, -size * 0.42, size * 0.38, size * 0.2);
+      ctx.fillStyle = '#212121';
+      ctx.beginPath();
+      ctx.arc(-size * 0.28, size * 0.22, size * 0.26, 0, Math.PI * 2);
+      ctx.arc(size * 0.32, size * 0.28, size * 0.16, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // Dirt overlay (washes off in pond)
@@ -2541,13 +2553,13 @@ export class FarmGame {
       ctx.save();
       ctx.globalAlpha = a;
       ctx.fillStyle = '#5d4037';
-      roundRectPath(ctx, -size * 0.38, -size * 0.42, size * 0.76, size * 0.85, 10);
+      roundRectPath(ctx, -size * 0.55, -size * 0.3, size * 1.05, size * 0.52, 10);
       ctx.fill();
       ctx.fillStyle = '#3e2723';
       ctx.beginPath();
-      ctx.ellipse(-size * 0.12, size * 0.05, 8, 5, 0.3, 0, Math.PI * 2);
-      ctx.ellipse(size * 0.14, -size * 0.08, 7, 4, -0.2, 0, Math.PI * 2);
-      ctx.ellipse(0, size * 0.22, 10, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(-size * 0.15, size * 0.05, 10, 5, 0.2, 0, Math.PI * 2);
+      ctx.ellipse(size * 0.2, -size * 0.05, 8, 4, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(0, size * 0.18, 12, 4, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -2555,65 +2567,52 @@ export class FarmGame {
     ctx.restore();
   }
 
-  /** Hitch implement behind tractor (local −Y). */
+  /** Hitch implement behind tractor (local −X). */
   private drawImplement(ctx: CanvasRenderingContext2D, size: number): void {
     const id = this.selectedImplement;
-    // Behind tractor in local space (art rear after Y-flip of body).
-    const rear = -size * 0.58;
+    const rear = -size * 0.62;
     const img = this.implementImgs[id];
     const tune = this.hitchTune[id];
 
     ctx.save();
     ctx.globalAlpha = 0.98;
 
-    // Soft drop shadow under hitch implement (local space)
+    // Soft drop shadow under implement wheels (local space)
     ctx.save();
     ctx.fillStyle = 'rgba(20, 30, 20, 0.22)';
     const shadowLen =
       id === 'kombajn'
-        ? size * 1.45
+        ? size * 1.35
         : id === 'prikolica' || id === 'gnojnica'
-          ? size * 0.85
-          : size * 0.55;
+          ? size * 0.95
+          : size * 0.65;
     ctx.beginPath();
-    ctx.ellipse(0, rear - shadowLen * 0.35, size * 0.32, size * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(rear - shadowLen * 0.35, size * 0.28, shadowLen * 0.45, size * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (id === 'kombajn') {
-      ctx.beginPath();
-      ctx.ellipse(0, rear - shadowLen * 0.85, size * 0.36, size * 0.13, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.restore();
 
-    // Short hitch tongue from under body to rear pin
+    // Short hitch tongue from under body to rear pin (along −X)
     ctx.strokeStyle = '#37474f';
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, -size * 0.12);
-    ctx.lineTo(0, rear);
+    ctx.moveTo(-size * 0.18, size * 0.12);
+    ctx.lineTo(rear, size * 0.12);
     ctx.stroke();
     // Hitch pin
     ctx.fillStyle = '#90a4ae';
     ctx.beginPath();
-    ctx.arc(0, rear, 3.5, 0, Math.PI * 2);
+    ctx.arc(rear, size * 0.12, 3.5, 0, Math.PI * 2);
     ctx.fill();
-    // Soft highlight on one side of hitch metal only (not cabin/roof)
     ctx.strokeStyle = 'rgba(255,255,255,0.28)';
     ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.moveTo(2.0, -size * 0.1);
-    ctx.lineTo(2.0, rear + 1);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(-2.0, -size * 0.1);
-    ctx.lineTo(-2.0, rear + 1);
+    ctx.moveTo(-size * 0.16, size * 0.1);
+    ctx.lineTo(rear + 1, size * 0.1);
     ctx.stroke();
 
-    // All implement drawing is relative to hitch pin
-    ctx.translate(0, rear);
+    // All implement drawing relative to hitch pin
+    ctx.translate(rear, size * 0.12);
 
     if (img) {
       const iw = img.width;
@@ -2622,14 +2621,11 @@ export class FarmGame {
       const scale = tune.scale;
       const drawW = size * scale * (iw / maxDim);
       const drawH = size * scale * (ih / maxDim);
-      // Long axis ≈ hitch↔body for horizontal sprites
       const longAxis = Math.max(drawW, drawH);
       ctx.rotate(tune.rot);
-      // Both offsets are longAxis fractions (image space after rot)
       ctx.translate((tune.offsetX ?? 0) * longAxis, tune.offsetY * longAxis);
       ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
     } else {
-      // Canvas icons: hitch at (0,0), body −Y; same offset fractions
       const s = tune.scale;
       const longAxis = size * s;
       ctx.rotate(tune.rot);
@@ -2643,7 +2639,7 @@ export class FarmGame {
 
   /**
    * Kids-game canvas icons when no PNG is available.
-   * Hitch pin at (0,0); tongue toward +Y (tractor); body trails in -Y.
+   * Side-view: hitch pin at (0,0); tongue toward +X (tractor); body trails in −X.
    * Drawn at ~unit size; hitchTune.scale applied by caller.
    */
   private drawFallbackImplement(ctx: CanvasRenderingContext2D, id: ImplementId): void {
@@ -2651,27 +2647,27 @@ export class FarmGame {
     ctx.lineWidth = 3.5;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(0, 8);
-    ctx.lineTo(0, -8);
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-6, 0);
     ctx.stroke();
     ctx.fillStyle = "#607d8b";
     ctx.beginPath();
-    ctx.moveTo(0, 2);
-    ctx.lineTo(-9, -10);
-    ctx.lineTo(9, -10);
+    ctx.moveTo(2, 0);
+    ctx.lineTo(-10, -9);
+    ctx.lineTo(-10, 9);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "#b0bec5";
     ctx.beginPath();
-    ctx.arc(0, 5, 3.2, 0, Math.PI * 2);
+    ctx.arc(6, 0, 3.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#546e7a";
     ctx.lineWidth = 2.2;
     ctx.beginPath();
-    ctx.moveTo(-8, 2);
-    ctx.lineTo(-5, -10);
-    ctx.moveTo(8, 2);
-    ctx.lineTo(5, -10);
+    ctx.moveTo(2, -8);
+    ctx.lineTo(-10, -5);
+    ctx.moveTo(2, 8);
+    ctx.lineTo(-10, 5);
     ctx.stroke();
 
     const wheel = (x: number, y: number, r: number) => {
