@@ -3,14 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Vesela kmetija 3D (poskus)</title>
-    <script type="module" crossorigin src="./assets/index-DbV48egR.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-C5L1po5L.css">
+    <title>Vesela kmetija 3D</title>
+    <script type="module" crossorigin src="./assets/index-B9X7quFp.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DYlkiJyp.css">
   </head>
   <body>
     <div id="ui">
-      <h1>Vesela kmetija 3D <span>(poskus)</span></h1>
-      <p>WASD / puščice ali ročica — vozi zeleni Deutz traktor</p>
+      <h1>Vesela kmetija 3D</h1>
+      <p>WASD / puščice ali ročica — vozi zeleni Deutz po kmetiji</p>
+      <p id="hint">Priključek: <strong id="impl-label">Plug</strong></p>
+    </div>
+    <div id="impl-bar" aria-label="Priključki">
+      <button type="button" data-id="plug" class="active">Plug</button>
+      <button type="button" data-id="balirka">Balirka</button>
+      <button type="button" data-id="prikolica">Prikolica</button>
+      <button type="button" data-id="vitla">Vitla</button>
     </div>
     <div id="joystick" aria-hidden="true">
       <div id="joy-base"><div id="joy-knob"></div></div>
