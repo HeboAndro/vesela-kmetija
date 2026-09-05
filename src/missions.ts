@@ -72,7 +72,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'plug',
-        hint: 'Priklopi Plug in prevozi desno njivo — trava postane rjava zemlja.',
+        hint: 'Priklopi Plug in prevozi zgornjo njivo žita — trava postane rjava zemlja.',
         phaseDone: 'Njiva je zorana! Zdaj posejemo.',
       },
       {
@@ -88,7 +88,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'kosilnica',
-        hint: 'Kosilnica: pokosi visoko travo na levem travniku.',
+        hint: 'Kosilnica: pokosi visoko travo na senenem travniku (levo).',
         phaseDone: 'Trava je pokošena!',
       },
       {
@@ -119,7 +119,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'gnojnica',
-        hint: 'Gnojnica: razvoz gnojnice po travniku.',
+        hint: 'Gnojnica: razvoz gnojnice po spodnjem travniku (temnejša trava, cisterna).',
       },
     ],
   },
@@ -130,7 +130,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'sejalnik',
-        hint: 'Sejalnik: posej koruzo na koruznem polju (desno zgoraj).',
+        hint: 'Sejalnik: posej koruzo na koruznem polju (zgoraj desno, ob gozdu).',
         phaseDone: 'Koruza raste! Zdaj jo požanjemo za silažo.',
       },
       {
@@ -173,7 +173,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'metla',
-        hint: 'Počisti dvorišče z metlo',
+        hint: 'Metla: počisti dvorišče pri hlevu (umazano zemljo).',
       },
     ],
   },
@@ -195,7 +195,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'prikolica',
-        hint: 'Noč je! Priklopi prikolico in poišči izgubljeno jagnje na travniku (žarometi).',
+        hint: 'Noč je! Priklopi prikolico in poišči jagnje v ograjeni nočni ogradi (levo spodaj).',
       },
     ],
   },
@@ -206,7 +206,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'prikolica',
-        hint: 'Naloži ovite bale in pelji po ozki poti do soseda — ne trči v ograjo!',
+        hint: 'Naloži ovite bale in pelji po ozki poti do sosedove hiše (spodaj levo) — ne trči v ograjo!',
       },
     ],
   },

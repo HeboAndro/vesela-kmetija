@@ -67,7 +67,14 @@ interface MeadowCell {
   w: number;
   h: number;
   state: MeadowState;
-  /** Slurry / gnojnica wet manure splash. */
+}
+
+/** Slurry / gnojnica cells on manureField (separate from hay meadow). */
+interface ManureCell {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
   manured: boolean;
 }
 
@@ -122,8 +129,8 @@ interface FxParticle {
 }
 
 /** Playable world / mapa.png size (full-bleed). */
-const MAP_W = 1920;
-const MAP_H = 1280;
+const MAP_W = 2400;
+const MAP_H = 1600;
 const TRACTOR_DRAW = 112;
 /** Half tractor footprint — expand cell hit boxes so driving across always marks. */
 const CELL_HIT_EXPAND = TRACTOR_DRAW * 0.5;
@@ -346,6 +353,7 @@ export class FarmGame {
   private fieldCells: FieldCell[] = [];
   private yardCells: YardCell[] = [];
   private meadowCells: MeadowCell[] = [];
+  private manureCells: ManureCell[] = [];
   private cornCells: CornCell[] = [];
   private trees: ForestTree[] = [];
   private hayPatches: HayPatch[] = [];
@@ -364,11 +372,11 @@ export class FarmGame {
   /** Wrapped bales delivered to barn yard or neighbor. */
   private deliveredBales = 0;
   /** Lost lamb for night mission (found when close). */
-  private lostLamb = { x: 280, y: 720, found: false };
+  private lostLamb = { x: 700, y: 1180, found: false };
   /** Soft mud slowdown cooldown / factor. */
   private mudFactor = 1;
   /** Silage mound after corn harvest. */
-  private silagePile = { x: 1100, y: 980, amount: 0 };
+  private silagePile = { x: 1480, y: 1120, amount: 0 };
   /** 1 = dirty, 0 = clean. Washes off at washBay during wash mission. */
   private tractorDirt = 1;
   /** Cooldown so wash splash beep is not every frame. */
@@ -376,13 +384,13 @@ export class FarmGame {
   /** Cooldown so slurry splash beep is not every frame. */
   private slurrySfxCd = 0;
 
-  private tractor = { x: 680, y: 860, angle: 0 };
+  private tractor = { x: 1050, y: 1080, angle: 0 };
   private speed = TRACTOR_SPEED;
   private bouncePhase = 0;
   private moving = false;
 
   /** World-space camera center (smooth follow). */
-  private cam = { x: 680, y: 860 };
+  private cam = { x: 1050, y: 1080 };
   /** Optional nudge from one-finger drag on empty map. */
   private camNudge = { x: 0, y: 0 };
   private pan = {
@@ -555,29 +563,31 @@ export class FarmGame {
   }
 
   private buildWorld(): void {
-    // Calibrated to painted features on mapa.png (1920×1280)
+    // Calibrated to painted features on mapa.png (2400×1600)
     this.zones = [
-      { id: 'pond', x: 90, y: 60, w: 460, h: 340 },
-      { id: 'leftField', x: 50, y: 540, w: 600, h: 520 },
-      { id: 'rightField', x: 880, y: 70, w: 640, h: 280 },
-      { id: 'cornField', x: 1550, y: 20, w: 350, h: 340 },
-      { id: 'forest', x: 1400, y: 640, w: 500, h: 620 },
-      { id: 'barn', x: 1100, y: 480, w: 360, h: 380 },
-      // Equipment shed below red barn
-      { id: 'garage', x: 1080, y: 880, w: 280, h: 190 },
-      { id: 'hay', x: 980, y: 700, w: 200, h: 180 },
-      // Open barn / feed alley — left of red barn
-      { id: 'openBarn', x: 720, y: 480, w: 340, h: 380 },
-      { id: 'trough', x: 820, y: 560, w: 140, h: 120 },
-      // Wash station below open barn
-      { id: 'washBay', x: 740, y: 880, w: 240, h: 180 },
-      // Log / bale drop yard between wash / garage / forest
-      { id: 'barnYard', x: 980, y: 1000, w: 340, h: 200 },
-      // Muddy soft path near wash / driveway
-      { id: 'mudPath', x: 700, y: 980, w: 280, h: 160 },
-      // Neighbor farm drop-off (narrow path approach from left)
-      { id: 'neighbor', x: 40, y: 980, w: 260, h: 220 },
-      { id: 'fenceCorridor', x: 300, y: 1040, w: 400, h: 100 },
+      { id: 'pond', x: 110, y: 70, w: 560, h: 400 },
+      // Hay meadow (kosilnica → zgrabljalnik → balirka → ovijalka)
+      { id: 'leftField', x: 70, y: 560, w: 700, h: 480 },
+      // Separate slurry meadow for gnojnica
+      { id: 'manureField', x: 70, y: 1060, w: 480, h: 220 },
+      // Night lamb paddock
+      { id: 'nightPaddock', x: 580, y: 1080, w: 260, h: 200 },
+      // Grain field (plug → sejalnik)
+      { id: 'rightField', x: 1080, y: 80, w: 820, h: 360 },
+      { id: 'cornField', x: 1920, y: 30, w: 450, h: 420 },
+      { id: 'forest', x: 1720, y: 720, w: 660, h: 850 },
+      { id: 'barn', x: 1360, y: 560, w: 440, h: 440 },
+      { id: 'garage', x: 1340, y: 1060, w: 340, h: 230 },
+      { id: 'hay', x: 1200, y: 860, w: 240, h: 200 },
+      // Open barn / feed alley
+      { id: 'openBarn', x: 880, y: 560, w: 420, h: 440 },
+      { id: 'trough', x: 1000, y: 680, w: 160, h: 140 },
+      { id: 'washBay', x: 900, y: 1060, w: 300, h: 230 },
+      // Courtyard: metla + log/bale drop
+      { id: 'barnYard', x: 1180, y: 1180, w: 480, h: 300 },
+      { id: 'mudPath', x: 860, y: 1180, w: 300, h: 200 },
+      { id: 'neighbor', x: 40, y: 1300, w: 320, h: 270 },
+      { id: 'fenceCorridor', x: 360, y: 1360, w: 480, h: 130 },
     ];
     this.resetWorldState();
   }
@@ -636,6 +646,24 @@ export class FarmGame {
           w: mcw,
           h: mch,
           state: 'tall',
+        });
+      }
+    }
+
+    // Manure / gnojnica meadow (separate from hay)
+    this.manureCells = [];
+    const manureZ = this.zones.find((z) => z.id === 'manureField')!;
+    const manCols = 5;
+    const manRows = 3;
+    const manCw = manureZ.w / manCols;
+    const manCh = manureZ.h / manRows;
+    for (let r = 0; r < manRows; r++) {
+      for (let c = 0; c < manCols; c++) {
+        this.manureCells.push({
+          x: manureZ.x + c * manCw + manCw / 2,
+          y: manureZ.y + r * manCh + manCh / 2,
+          w: manCw,
+          h: manCh,
           manured: false,
         });
       }
@@ -684,17 +712,26 @@ export class FarmGame {
     this.deliveredLogs = 0;
     this.trailerBales = 0;
     this.deliveredBales = 0;
-    this.lostLamb = { x: 220 + Math.random() * 200, y: 620 + Math.random() * 200, found: false };
+    const nightPad = this.zones.find((z) => z.id === 'nightPaddock');
+    if (nightPad) {
+      this.lostLamb = {
+        x: nightPad.x + 40 + Math.random() * (nightPad.w - 80),
+        y: nightPad.y + 40 + Math.random() * (nightPad.h - 80),
+        found: false,
+      };
+    } else {
+      this.lostLamb = { x: 700, y: 1180, found: false };
+    }
     this.mudFactor = 1;
-    this.silagePile = { x: 1220, y: 920, amount: 0 };
+    this.silagePile = { x: 1480, y: 1120, amount: 0 };
     this.particles = [];
 
     // Legacy barn-side hay (hidden — meadow workflow uses leftField)
     this.hayPatches = [
-      { x: 1040, y: 780, r: 36, baled: true },
-      { x: 1120, y: 820, r: 34, baled: true },
-      { x: 1070, y: 860, r: 32, baled: true },
-      { x: 1180, y: 760, r: 34, baled: true },
+      { x: 1280, y: 960, r: 36, baled: true },
+      { x: 1380, y: 1000, r: 34, baled: true },
+      { x: 1320, y: 1040, r: 32, baled: true },
+      { x: 1450, y: 940, r: 34, baled: true },
     ];
     this.bales = [];
     this.tractorDirt = 1;
@@ -771,7 +808,7 @@ export class FarmGame {
     }
 
     // Path between open barn and wash / garage
-    this.tractor = { x: 680, y: 860, angle: -Math.PI / 2 };
+    this.tractor = { x: 1050, y: 1080, angle: -Math.PI / 2 };
     this.cam = { x: this.tractor.x, y: this.tractor.y };
     this.camNudge = { x: 0, y: 0 };
     this.moving = false;
@@ -1142,7 +1179,7 @@ export class FarmGame {
       }
       return this.zones.find((z) => z.id === 'leftField');
     }
-    if (m.id === 'gnojnica') return this.zones.find((z) => z.id === 'leftField');
+    if (m.id === 'gnojnica') return this.zones.find((z) => z.id === 'manureField');
     if (m.id === 'koruza') return this.zones.find((z) => z.id === 'cornField');
     if (m.id === 'gozd') {
       if (this.currentImplement() === 'prikolica' && this.trailerLogs > 0) {
@@ -1712,11 +1749,11 @@ export class FarmGame {
     }
   }
 
-  /** Spread slurry (gnojnica) over leftField meadow cells. */
+  /** Spread slurry (gnojnica) over manureField cells. */
   private workSlurry(): void {
     let done = 0;
     let justHit = false;
-    for (const cell of this.meadowCells) {
+    for (const cell of this.manureCells) {
       if (!cell.manured && this.tractorHitsCell(cell.x, cell.y, cell.w, cell.h)) {
         cell.manured = true;
         justHit = true;
@@ -1734,9 +1771,9 @@ export class FarmGame {
       sfxSplash();
       this.slurrySfxCd = 0.22;
     }
-    this.missionProgress = done / this.meadowCells.length;
+    this.missionProgress = done / this.manureCells.length;
     this.updateHud();
-    if (done >= this.meadowCells.length) {
+    if (done >= this.manureCells.length) {
       this.missionProgress = 1;
       this.completePhase();
     }
@@ -2095,7 +2132,7 @@ export class FarmGame {
     ctx.translate(ox, oy);
     ctx.scale(this.viewScale, this.viewScale);
 
-    // Full-bleed map art (1920×1280)
+    // Full-bleed map art (2400×1600)
     ctx.drawImage(this.mapImg, 0, 0, MAP_W, MAP_H);
     this.drawExpandedZones(ctx);
 
@@ -2103,6 +2140,7 @@ export class FarmGame {
     this.drawWindGrass(ctx);
     this.drawFieldOverlay(ctx);
     this.drawMeadowOverlay(ctx);
+    this.drawManureOverlay(ctx);
     this.drawCornOverlay(ctx);
     this.drawForest(ctx);
     this.drawWashBay(ctx);
@@ -2237,7 +2275,7 @@ export class FarmGame {
 
   /** Reserved for light gameplay hints on expanded map (no pad strips — map art is full-bleed). */
   private drawExpandedZones(_ctx: CanvasRenderingContext2D): void {
-    // Pad fills / dirt margins removed so the 1920×1280 mapa.png stays visible.
+    // Pad fills / dirt margins removed so the 2400×1600 mapa.png stays visible.
   }
 
   private drawCornOverlay(ctx: CanvasRenderingContext2D): void {
@@ -2816,8 +2854,30 @@ export class FarmGame {
         }
       }
       // baled / wrapped drawn as bales
+    }
+  }
 
-      // Gnojnica wet manure splash (brown-green sheen) — on top of hay states
+  /** Gnojnica splash overlay on manureField (separate from hay meadow). */
+  private drawManureOverlay(ctx: CanvasRenderingContext2D): void {
+    const field = this.zones.find((z) => z.id === 'manureField');
+    if (!field) return;
+    const cols = 5;
+    const rows = 3;
+    const cw = field.w / cols;
+    const ch = field.h / rows;
+
+    for (let i = 0; i < this.manureCells.length; i++) {
+      const cell = this.manureCells[i];
+      const c = i % cols;
+      const r = Math.floor(i / cols);
+      const x = field.x + c * cw;
+      const y = field.y + r * ch;
+      const pad = 2;
+      const rx = x + pad;
+      const ry = y + pad;
+      const rw = cw - pad * 2;
+      const rh = ch - pad * 2;
+
       if (cell.manured) {
         ctx.fillStyle = 'rgba(62, 48, 28, 0.42)';
         ctx.fillRect(rx, ry, rw, rh);
@@ -2836,7 +2896,6 @@ export class FarmGame {
         ctx.beginPath();
         ctx.ellipse(cell.x, cell.y, rw * 0.42, rh * 0.38, 0.2, 0, Math.PI * 2);
         ctx.fill();
-        // Wet speckles
         ctx.fillStyle = 'rgba(55, 40, 22, 0.55)';
         for (let s = 0; s < 7; s++) {
           const sx = rx + 8 + ((s * 37 + i * 11) % Math.max(8, Math.floor(rw - 16)));
@@ -2845,12 +2904,10 @@ export class FarmGame {
           ctx.ellipse(sx, sy, 3 + (s % 3), 2 + (s % 2), 0.4, 0, Math.PI * 2);
           ctx.fill();
         }
-        // Glossy wet edge
         ctx.strokeStyle = 'rgba(140, 160, 70, 0.28)';
         ctx.lineWidth = 2;
         ctx.strokeRect(rx + 2, ry + 2, rw - 4, rh - 4);
       } else if (this.currentMission().id === 'gnojnica' && !this.gameDone) {
-        // Highlight remaining dry cells during slurry mission
         const pulse = 0.22 + Math.sin(this.pulse * 2.3 + i * 0.4) * 0.12;
         ctx.fillStyle = `rgba(160, 120, 60, ${pulse})`;
         ctx.fillRect(rx, ry, rw, rh);
