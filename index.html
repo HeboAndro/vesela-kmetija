@@ -17,9 +17,16 @@
 
       <div id="mission-card">
         <div id="mission-title">Pripravi se!</div>
+        <div id="mission-need" aria-label="Potreben priključek">
+          <span id="mission-need-icon" aria-hidden="true">🪓</span>
+          <span id="mission-need-label">Plug</span>
+        </div>
         <div id="mission-hint">Uporabi ročico spodaj levo</div>
         <div id="mission-progress"><div id="progress-fill"></div></div>
+        <button type="button" id="restart-btn">Začni znova</button>
       </div>
+
+      <button type="button" id="garage-btn" hidden>Zamenjaj priključek</button>
 
       <div id="stars-badge" aria-label="Zvezdice">
         <span id="star-icon">★</span>
