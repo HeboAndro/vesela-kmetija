@@ -322,19 +322,20 @@ export class FarmGame {
   > = {
     // offsetY nudges body along hitch axis (+ toward tractor). Keep small so
     // tongue stays short and wheels sit near ground behind the pin.
-    // flip: photo has hitch on image LEFT (we mirror so hitch faces tractor).
+    // flip: photo has hitch on image LEFT (mirror so hitch ends on RIGHT → +Y toward tractor).
+    // Photos verified Sep 2026: hitch-LEFT need flip; hitch-RIGHT leave alone.
     plug: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.15 },
     balirka: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.2, flip: true },
     ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.12, flip: true },
-    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.18 },
+    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.12 },
+    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.18, flip: true },
     zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.02 },
     gnojnica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.25 },
     kombajn: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.1 },
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.28 },
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.28, flip: true },
     krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.2, flip: true },
     krtaca: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
-    vitla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15 },
+    vitla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15, flip: true },
     silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
     metla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15, flip: true },
   };
