@@ -368,11 +368,11 @@ export class FarmGame {
   /** Wrapped bales delivered to barn yard or neighbor. */
   private deliveredBales = 0;
   /** Lost lamb for night mission (found when close). */
-  private lostLamb = { x: 700, y: 1180, found: false };
+  private lostLamb = { x: 1600, y: 1280, found: false };
   /** Soft mud slowdown cooldown / factor. */
   private mudFactor = 1;
   /** Silage mound after corn harvest. */
-  private silagePile = { x: 1480, y: 1120, amount: 0 };
+  private silagePile = { x: 1100, y: 420, amount: 0 };
   /** 1 = dirty, 0 = clean. Washes off at washBay during wash mission. */
   private tractorDirt = 1;
   /** Cooldown so wash splash beep is not every frame. */
@@ -380,13 +380,13 @@ export class FarmGame {
   /** Cooldown so slurry splash beep is not every frame. */
   private slurrySfxCd = 0;
 
-  private tractor = { x: 1050, y: 1080, angle: 0 };
+  private tractor = { x: 1200, y: 800, angle: 0 };
   private speed = TRACTOR_SPEED;
   private bouncePhase = 0;
   private moving = false;
 
   /** World-space camera center (smooth follow). */
-  private cam = { x: 1050, y: 1080 };
+  private cam = { x: 1200, y: 800 };
   /** Optional nudge from one-finger drag on empty map. */
   private camNudge = { x: 0, y: 0 };
   private pan = {
@@ -560,31 +560,38 @@ export class FarmGame {
   }
 
   private buildWorld(): void {
-    // Calibrated to painted features on mapa.png (2400×1600)
+    // Calibrated to painted landmarks on mapa.png (2400×1600 full-bleed)
+    // Top-left forest+logs, left pond, barn/silo/openBarn/garage cluster,
+    // mid-right wash gantry, bottom grain/corn/sheep, slurry right, neighbor top-right.
     this.zones = [
-      { id: 'pond', x: 110, y: 70, w: 560, h: 400 },
-      // Hay meadow (kosilnica → zgrabljalnik → balirka → ovijalka)
-      { id: 'leftField', x: 70, y: 560, w: 700, h: 480 },
-      // Separate slurry meadow for gnojnica
-      { id: 'manureField', x: 70, y: 1060, w: 480, h: 220 },
-      // Night lamb paddock
-      { id: 'nightPaddock', x: 580, y: 1080, w: 260, h: 200 },
-      // Grain field (plug → sejalnik)
-      { id: 'rightField', x: 1080, y: 80, w: 820, h: 360 },
-      { id: 'cornField', x: 1920, y: 30, w: 450, h: 420 },
-      { id: 'forest', x: 1720, y: 720, w: 660, h: 850 },
-      { id: 'barn', x: 1360, y: 560, w: 440, h: 440 },
-      { id: 'garage', x: 1340, y: 1060, w: 340, h: 230 },
-      { id: 'hay', x: 1200, y: 860, w: 240, h: 200 },
-      // Open barn / feed alley
-      { id: 'openBarn', x: 880, y: 560, w: 420, h: 440 },
-      { id: 'trough', x: 1000, y: 680, w: 160, h: 140 },
-      { id: 'washBay', x: 900, y: 1060, w: 300, h: 230 },
-      // Courtyard: metla + log/bale drop
-      { id: 'barnYard', x: 1180, y: 1180, w: 480, h: 300 },
-      { id: 'mudPath', x: 860, y: 1180, w: 300, h: 200 },
-      { id: 'neighbor', x: 40, y: 1300, w: 320, h: 270 },
-      { id: 'fenceCorridor', x: 360, y: 1360, w: 480, h: 130 },
+      // Forest + log stacks (top-left)
+      { id: 'forest', x: 10, y: 10, w: 560, h: 440 },
+      { id: 'pond', x: 30, y: 470, w: 360, h: 260 },
+      // Hay meadow (kosilnica → zgrabljalnik → balirka → ovijalka) — grass belt below pond
+      { id: 'leftField', x: 40, y: 740, w: 520, h: 200 },
+      // Grain field (plug → sejalnik) — plowed brown bottom-left
+      { id: 'rightField', x: 80, y: 960, w: 660, h: 500 },
+      // Corn (bottom-center)
+      { id: 'cornField', x: 780, y: 1000, w: 480, h: 480 },
+      // Night lamb paddock (bottom-right)
+      { id: 'nightPaddock', x: 1350, y: 1120, w: 780, h: 400 },
+      // Slurry tank pad for gnojnica (right of paddock)
+      { id: 'manureField', x: 1860, y: 780, w: 500, h: 320 },
+      // Red barn + silo cluster
+      { id: 'barn', x: 700, y: 160, w: 400, h: 340 },
+      { id: 'garage', x: 900, y: 540, w: 280, h: 220 },
+      { id: 'hay', x: 1020, y: 460, w: 200, h: 140 },
+      // Open barn / feed alley (cows)
+      { id: 'openBarn', x: 1140, y: 280, w: 480, h: 300 },
+      { id: 'trough', x: 1240, y: 360, w: 160, h: 120 },
+      // Yellow CAR WASH gantry on pad (avtopralnica drawn here)
+      { id: 'washBay', x: 1640, y: 380, w: 420, h: 320 },
+      // Courtyard: metla + log/bale drop (dirt hub)
+      { id: 'barnYard', x: 1100, y: 640, w: 460, h: 280 },
+      { id: 'mudPath', x: 860, y: 720, w: 260, h: 160 },
+      // Neighbor yellow house (top-right)
+      { id: 'neighbor', x: 2040, y: 30, w: 340, h: 360 },
+      { id: 'fenceCorridor', x: 1760, y: 120, w: 280, h: 200 },
     ];
     this.resetWorldState();
   }
@@ -685,7 +692,7 @@ export class FarmGame {
       }
     }
 
-    // Forest trees (right pad)
+    // Forest trees (top-left)
     this.trees = [];
     const forest = this.zones.find((z) => z.id === 'forest')!;
     const spots = [
@@ -717,18 +724,18 @@ export class FarmGame {
         found: false,
       };
     } else {
-      this.lostLamb = { x: 700, y: 1180, found: false };
+      this.lostLamb = { x: 1600, y: 1280, found: false };
     }
     this.mudFactor = 1;
-    this.silagePile = { x: 1480, y: 1120, amount: 0 };
+    this.silagePile = { x: 1100, y: 420, amount: 0 };
     this.particles = [];
 
     // Legacy barn-side hay (hidden — meadow workflow uses leftField)
     this.hayPatches = [
-      { x: 1280, y: 960, r: 36, baled: true },
-      { x: 1380, y: 1000, r: 34, baled: true },
-      { x: 1320, y: 1040, r: 32, baled: true },
-      { x: 1450, y: 940, r: 34, baled: true },
+      { x: 1040, y: 500, r: 36, baled: true },
+      { x: 1120, y: 520, r: 34, baled: true },
+      { x: 1080, y: 560, r: 32, baled: true },
+      { x: 1180, y: 490, r: 34, baled: true },
     ];
     this.bales = [];
     this.tractorDirt = 1;
@@ -804,8 +811,8 @@ export class FarmGame {
       });
     }
 
-    // Path between open barn and wash / garage
-    this.tractor = { x: 1050, y: 1080, angle: -Math.PI / 2 };
+    // Dirt-road hub between barn yard, garage, and fields
+    this.tractor = { x: 1200, y: 800, angle: -Math.PI / 2 };
     this.cam = { x: this.tractor.x, y: this.tractor.y };
     this.camNudge = { x: 0, y: 0 };
     this.moving = false;
