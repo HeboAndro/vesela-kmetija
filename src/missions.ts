@@ -5,7 +5,10 @@ export type MissionId =
   | 'koruza'
   | 'gozd'
   | 'feed'
-  | 'wash';
+  | 'wash'
+  | 'yard'
+  | 'night'
+  | 'neighbor';
 
 export type ImplementId =
   | 'plug'
@@ -20,7 +23,8 @@ export type ImplementId =
   | 'vitla'
   | 'prikolica'
   | 'krmilnik'
-  | 'krtaca';
+  | 'krtaca'
+  | 'metla';
 
 export interface MissionPhase {
   implement: ImplementId;
@@ -55,8 +59,9 @@ export const IMPLEMENTS: {
   { id: 'kombajn', label: 'Kombajn', shortLabel: 'Komb.', emoji: '🚜' },
   { id: 'vitla', label: 'Vitla', shortLabel: 'Vitla', emoji: '🪵' },
   { id: 'prikolica', label: 'Prikolica', shortLabel: 'Prikol.', emoji: '🪵' },
-  { id: 'krmilnik', label: 'Krmilnik', shortLabel: 'Krmil.', emoji: '🐄' },
+  { id: 'krmilnik', label: 'Mešalnik', shortLabel: 'Mešal.', emoji: '🐄' },
   { id: 'krtaca', label: 'Krtača', shortLabel: 'Krtača', emoji: '🧽' },
+  { id: 'metla', label: 'Metla', shortLabel: 'Metla', emoji: '🟡' },
 ];
 
 export const MISSIONS: Mission[] = [
@@ -78,8 +83,8 @@ export const MISSIONS: Mission[] = [
   },
   {
     id: 'hay',
-    title: 'Seno / trava',
-    success: 'Seno je pokošeno, zgrabljeno, balirano in ovito!',
+    title: 'Cel dan sena',
+    success: 'Seno je pokošeno, balirano, ovito in na dvorišču!',
     phases: [
       {
         implement: 'kosilnica',
@@ -99,6 +104,11 @@ export const MISSIONS: Mission[] = [
       {
         implement: 'ovijalka',
         hint: 'Ovijalka: ovij bale v zeleno folijo.',
+        phaseDone: 'Bale so ovite! Naloži jih na prikolico.',
+      },
+      {
+        implement: 'prikolica',
+        hint: 'Prikolica: naloži ovite bale in jih pelji na dvorišče pri hlevu.',
       },
     ],
   },
@@ -115,8 +125,8 @@ export const MISSIONS: Mission[] = [
   },
   {
     id: 'koruza',
-    title: 'Koruza za silažo',
-    success: 'Koruza je posejana in narejena silaža!',
+    title: 'Koruza + silos',
+    success: 'Koruza je požeta in silaža je na kupu!',
     phases: [
       {
         implement: 'sejalnik',
@@ -125,14 +135,14 @@ export const MISSIONS: Mission[] = [
       },
       {
         implement: 'kombajn',
-        hint: 'Kombajn + prikolica: požanjite koruzo za silažo.',
+        hint: 'Kombajn: požanjite koruzo — silaža gre na kup pri hlevu.',
       },
     ],
   },
   {
     id: 'gozd',
-    title: 'Delo v gozdu',
-    success: 'Hlodi so na dvorišču pri hlevu!',
+    title: 'Gozdna veriga',
+    success: 'Hlodi so na skladišču pri hlevu!',
     phases: [
       {
         implement: 'vitla',
@@ -141,18 +151,29 @@ export const MISSIONS: Mission[] = [
       },
       {
         implement: 'prikolica',
-        hint: 'Prikolica: naloži hlode in jih pelji na dvorišče pri hlevu.',
+        hint: 'Prikolica: naloži hlode in jih pelji na skladišče (dvorišče pri hlevu).',
       },
     ],
   },
   {
     id: 'feed',
-    title: 'Krmljenje živali',
-    success: 'Bravo! Govedo in ovce so srečne!',
+    title: 'Mešalnik krme',
+    success: 'Bravo! Govedo in ovce so siti!',
     phases: [
       {
         implement: 'krmilnik',
-        hint: 'Krmilnik: pelji po hlevskem hodniku — govedo in ovce so levo in desno.',
+        hint: 'Mešalnik (Trioliet): pelji po hlevskem hodniku — živali so levo in desno.',
+      },
+    ],
+  },
+  {
+    id: 'yard',
+    title: 'Čiščenje dvorišča',
+    success: 'Dvorišče je čisto!',
+    phases: [
+      {
+        implement: 'metla',
+        hint: 'Počisti dvorišče z metlo',
       },
     ],
   },
@@ -164,6 +185,28 @@ export const MISSIONS: Mission[] = [
       {
         implement: 'krtaca',
         hint: 'Pelji skozi avtopralnico pri hlevu (milo in voda).',
+      },
+    ],
+  },
+  {
+    id: 'night',
+    title: 'Nočna vožnja',
+    success: 'Našli ste izgubljeno jagnje!',
+    phases: [
+      {
+        implement: 'prikolica',
+        hint: 'Noč je! Priklopi prikolico in poišči izgubljeno jagnje na travniku (žarometi).',
+      },
+    ],
+  },
+  {
+    id: 'neighbor',
+    title: 'Dostava sosedu',
+    success: 'Ovite bale so pri sosedu!',
+    phases: [
+      {
+        implement: 'prikolica',
+        hint: 'Naloži ovite bale in pelji po ozki poti do soseda — ne trči v ograjo!',
       },
     ],
   },

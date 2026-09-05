@@ -49,6 +49,15 @@ interface FieldCell {
   sown: boolean;
 }
 
+/** Dirty courtyard / driveway spots for metla mission. */
+interface YardCell {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  dirty: boolean;
+}
+
 /** Meadow / hay workflow on leftField. */
 type MeadowState = 'tall' | 'cut' | 'windrow' | 'baled' | 'wrapped';
 
@@ -309,29 +318,32 @@ export class FarmGame {
    */
   private hitchTune: Record<
     ImplementId,
-    { rot: number; offsetY: number; offsetX?: number; scale: number }
+    { rot: number; offsetY: number; offsetX?: number; scale: number; flip?: boolean }
   > = {
     // offsetY nudges body along hitch axis (+ toward tractor). Keep small so
     // tongue stays short and wheels sit near ground behind the pin.
-    plug: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.0 },
-    balirka: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.05 },
-    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
-    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
-    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.08 },
+    // flip: photo has hitch on image LEFT (we mirror so hitch faces tractor).
+    plug: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.15 },
+    balirka: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.2, flip: true },
+    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.12, flip: true },
+    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.18 },
     zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.02 },
-    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.12 },
-    kombajn: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 0.92 },
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.15 },
-    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
+    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.25 },
+    kombajn: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.1 },
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.28 },
+    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.2, flip: true },
     krtaca: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
-    vitla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.05 },
+    vitla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15 },
     silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
+    metla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15, flip: true },
   };
 
   private ready = false;
 
   private zones: Zone[] = [];
   private fieldCells: FieldCell[] = [];
+  private yardCells: YardCell[] = [];
   private meadowCells: MeadowCell[] = [];
   private cornCells: CornCell[] = [];
   private trees: ForestTree[] = [];
@@ -346,6 +358,14 @@ export class FarmGame {
   private trailerLogs = 0;
   /** Logs delivered to barn yard. */
   private deliveredLogs = 0;
+  /** Wrapped bales on trailer (hay finale / neighbor). */
+  private trailerBales = 0;
+  /** Wrapped bales delivered to barn yard or neighbor. */
+  private deliveredBales = 0;
+  /** Lost lamb for night mission (found when close). */
+  private lostLamb = { x: 280, y: 720, found: false };
+  /** Soft mud slowdown cooldown / factor. */
+  private mudFactor = 1;
   /** Silage mound after corn harvest. */
   private silagePile = { x: 1100, y: 980, amount: 0 };
   /** 1 = dirty, 0 = clean. Washes off at washBay during wash mission. */
@@ -467,6 +487,7 @@ export class FarmGame {
         krmilnik,
         krtaca,
         vitla,
+        metla,
         ...tractorRaws
       ] = await Promise.all([
         loadImage('./mapa.png'),
@@ -483,6 +504,7 @@ export class FarmGame {
         loadImage('./krmilnik.png'),
         loadImage('./krtaca.png'),
         loadImage('./vitla.png'),
+        loadImage('./metla.png'),
         ...TRACTORS.map((t) => loadImage(t.src)),
       ]);
       this.mapImg = map;
@@ -516,6 +538,7 @@ export class FarmGame {
       this.implementImgs.krmilnik = keyCrop(krmilnik);
       this.implementImgs.krtaca = keyCrop(krtaca);
       this.implementImgs.vitla = keyCrop(vitla);
+      this.implementImgs.metla = keyCrop(metla);
       this.ready = true;
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
@@ -547,14 +570,37 @@ export class FarmGame {
       { id: 'trough', x: 820, y: 560, w: 140, h: 120 },
       // Wash station below open barn
       { id: 'washBay', x: 740, y: 880, w: 240, h: 180 },
-      // Log drop yard between wash / garage / forest
+      // Log / bale drop yard between wash / garage / forest
       { id: 'barnYard', x: 980, y: 1000, w: 340, h: 200 },
+      // Muddy soft path near wash / driveway
+      { id: 'mudPath', x: 700, y: 980, w: 280, h: 160 },
+      // Neighbor farm drop-off (narrow path approach from left)
+      { id: 'neighbor', x: 40, y: 980, w: 260, h: 220 },
+      { id: 'fenceCorridor', x: 300, y: 1040, w: 400, h: 100 },
     ];
     this.resetWorldState();
   }
 
   /** Reset fields, meadow, animals, tractor — safe to call on restart without rebinding input. */
   private resetWorldState(): void {
+    this.yardCells = [];
+    const yardZ = this.zones.find((z) => z.id === 'barnYard')!;
+    const yCols = 5;
+    const yRows = 3;
+    const ycw = yardZ.w / yCols;
+    const ych = yardZ.h / yRows;
+    for (let r = 0; r < yRows; r++) {
+      for (let c = 0; c < yCols; c++) {
+        this.yardCells.push({
+          x: yardZ.x + c * ycw + ycw / 2,
+          y: yardZ.y + r * ych + ych / 2,
+          w: ycw,
+          h: ych,
+          dirty: true,
+        });
+      }
+    }
+
     this.fieldCells = [];
     const field = this.zones.find((z) => z.id === 'rightField')!;
     const cols = 6;
@@ -635,6 +681,10 @@ export class FarmGame {
     }
     this.trailerLogs = 0;
     this.deliveredLogs = 0;
+    this.trailerBales = 0;
+    this.deliveredBales = 0;
+    this.lostLamb = { x: 220 + Math.random() * 200, y: 620 + Math.random() * 200, found: false };
+    this.mudFactor = 1;
     this.silagePile = { x: 1220, y: 920, amount: 0 };
     this.particles = [];
 
@@ -959,6 +1009,9 @@ export class FarmGame {
   private announceMission(): void {
     const m = this.currentMission();
     const p = this.currentPhase();
+    if (m.id === 'neighbor' || (m.id === 'hay' && p.implement === 'prikolica')) {
+      this.ensureNeighborBales();
+    }
     speakSl(`${m.title}. ${p.hint}`);
   }
 
@@ -1070,6 +1123,10 @@ export class FarmGame {
       if (!g) return null;
       return { x: g.x + g.w / 2, y: g.y + g.h / 2, kind: 'garage' };
     }
+    const m = this.currentMission();
+    if (m.id === 'night' && !this.lostLamb.found) {
+      return { x: this.lostLamb.x, y: this.lostLamb.y, kind: 'zone' };
+    }
     const zone = this.currentMissionZone();
     if (!zone) return null;
     return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2, kind: 'zone' };
@@ -1078,7 +1135,12 @@ export class FarmGame {
   private currentMissionZone(): Zone | undefined {
     const m = this.currentMission();
     if (m.id === 'grain') return this.zones.find((z) => z.id === 'rightField');
-    if (m.id === 'hay') return this.zones.find((z) => z.id === 'leftField');
+    if (m.id === 'hay') {
+      if (this.currentImplement() === 'prikolica') {
+        return this.zones.find((z) => z.id === 'barnYard');
+      }
+      return this.zones.find((z) => z.id === 'leftField');
+    }
     if (m.id === 'gnojnica') return this.zones.find((z) => z.id === 'leftField');
     if (m.id === 'koruza') return this.zones.find((z) => z.id === 'cornField');
     if (m.id === 'gozd') {
@@ -1089,6 +1151,12 @@ export class FarmGame {
     }
     if (m.id === 'feed') return this.zones.find((z) => z.id === 'openBarn');
     if (m.id === 'wash') return this.zones.find((z) => z.id === 'washBay');
+    if (m.id === 'yard') return this.zones.find((z) => z.id === 'barnYard');
+    if (m.id === 'night') {
+      if (this.lostLamb.found) return this.zones.find((z) => z.id === 'barnYard');
+      return undefined; // arrow points at lamb separately
+    }
+    if (m.id === 'neighbor') return this.zones.find((z) => z.id === 'neighbor');
     return undefined;
   }
 
@@ -1298,7 +1366,8 @@ export class FarmGame {
         const nx = jx / mag;
         const ny = jy / mag;
         this.tractor.angle = Math.atan2(ny, nx);
-        const step = this.speed * dt * Math.min(1, mag);
+        this.updateMudFactor();
+        const step = this.speed * this.mudFactor * dt * Math.min(1, mag);
         this.tractor.x += nx * step;
         this.tractor.y += ny * step;
         this.moving = true;
@@ -1460,6 +1529,7 @@ export class FarmGame {
         else if (impl === 'zgrabljalnik') this.workRake();
         else if (impl === 'balirka') this.workBaleMeadow();
         else if (impl === 'ovijalka') this.workWrapMeadow();
+        else if (impl === 'prikolica') this.workHaulHayBales();
         break;
       case 'gnojnica':
         if (impl === 'gnojnica') this.workSlurry();
@@ -1478,6 +1548,166 @@ export class FarmGame {
       case 'wash':
         this.workWash();
         break;
+      case 'yard':
+        if (impl === 'metla') this.workYardSweep();
+        break;
+      case 'night':
+        this.workNightRescue();
+        break;
+      case 'neighbor':
+        if (impl === 'prikolica') this.workNeighborDelivery();
+        break;
+    }
+  }
+
+  private updateMudFactor(): void {
+    const mud = this.zones.find((z) => z.id === 'mudPath');
+    let inMud = false;
+    if (mud) {
+      inMud =
+        this.tractor.x > mud.x &&
+        this.tractor.x < mud.x + mud.w &&
+        this.tractor.y > mud.y &&
+        this.tractor.y < mud.y + mud.h;
+    }
+    // Dirty tractor sinks more in mud; clean tractor rolls better.
+    if (inMud) {
+      this.mudFactor = this.tractorDirt > 0.35 ? 0.45 : 0.72;
+    } else {
+      this.mudFactor = 1;
+    }
+  }
+
+  /** Sweep dirty barnYard cells with metla. */
+  private workYardSweep(): void {
+    let done = 0;
+    let justHit = false;
+    for (const cell of this.yardCells) {
+      if (cell.dirty && this.tractorHitsCell(cell.x, cell.y, cell.w, cell.h)) {
+        cell.dirty = false;
+        justHit = true;
+        this.spawnParticles(cell.x, cell.y, 6, [
+          '#efebe9',
+          '#d7ccc8',
+          '#a1887f',
+          '#fffde7',
+          '#ffe082',
+        ], 50);
+      }
+      if (!cell.dirty) done++;
+    }
+    if (justHit && this.washSfxCd <= 0) {
+      sfxWash();
+      this.washSfxCd = 0.18;
+    }
+    this.missionProgress = done / Math.max(1, this.yardCells.length);
+    this.updateHud();
+    if (done >= this.yardCells.length) {
+      this.missionProgress = 1;
+      this.completePhase();
+    }
+  }
+
+  /** Night: find lost lamb with headlights, then bring near barnYard. */
+  private workNightRescue(): void {
+    if (!this.lostLamb.found) {
+      const d = Math.hypot(this.lostLamb.x - this.tractor.x, this.lostLamb.y - this.tractor.y);
+      // Need to get close (headlights help visually)
+      if (d < 70) {
+        this.lostLamb.found = true;
+        this.showToast('Jagnje najdeno! Pelji ga na dvorišče.', 2000);
+        speakSl('Jagnje najdeno! Pelji ga na dvorišče.');
+        sfxFeed();
+      }
+      this.missionProgress = Math.max(0, 1 - d / 600) * 0.5;
+      this.updateHud();
+      return;
+    }
+    // Carry lamb with tractor (follows) toward yard
+    this.lostLamb.x += (this.tractor.x - this.lostLamb.x) * 0.12;
+    this.lostLamb.y += (this.tractor.y - 28 - this.lostLamb.y) * 0.12;
+    const yard = this.zones.find((z) => z.id === 'barnYard')!;
+    const inYard =
+      this.tractor.x > yard.x &&
+      this.tractor.x < yard.x + yard.w &&
+      this.tractor.y > yard.y &&
+      this.tractor.y < yard.y + yard.h;
+    this.missionProgress = inYard ? 1 : 0.55 + Math.min(0.4, 80 / (40 + Math.hypot(
+      this.tractor.x - (yard.x + yard.w / 2),
+      this.tractor.y - (yard.y + yard.h / 2),
+    )));
+    this.updateHud();
+    if (inYard) {
+      this.missionProgress = 1;
+      this.completePhase();
+    }
+  }
+
+  /** Neighbor delivery: pick wrapped bales, avoid fence, unload at neighbor. */
+  private workNeighborDelivery(): void {
+    this.ensureNeighborBales();
+    // Pick up wrapped bales
+    for (const b of this.bales) {
+      if (!b.wrapped) continue;
+      if ((b as { hauled?: boolean }).hauled) continue;
+      const d = Math.hypot(b.x - this.tractor.x, b.y - this.tractor.y);
+      if (d < 70 && this.trailerBales < 4) {
+        (b as { hauled?: boolean }).hauled = true;
+        this.trailerBales++;
+        sfxFeed();
+      }
+    }
+    // Fence bump soft reset of progress feel
+    const fence = this.zones.find((z) => z.id === 'fenceCorridor');
+    if (fence) {
+      const inFenceBand =
+        this.tractor.y > fence.y - 8 &&
+        this.tractor.y < fence.y + fence.h + 8 &&
+        this.tractor.x > fence.x &&
+        this.tractor.x < fence.x + fence.w;
+      // Stay in corridor center — hitting top/bottom edges "hits fence"
+      const cy = fence.y + fence.h / 2;
+      if (inFenceBand && Math.abs(this.tractor.y - cy) > fence.h * 0.38) {
+        if (this.wrongEquipFlash <= 0) {
+          this.wrongEquipFlash = 0.6;
+          sfxWrong();
+          this.showToast('Pazi ograjo!', 900);
+        }
+        // Soft push back to center
+        this.tractor.y += (cy - this.tractor.y) * 0.08;
+      }
+    }
+    const neigh = this.zones.find((z) => z.id === 'neighbor')!;
+    const inN =
+      this.tractor.x > neigh.x &&
+      this.tractor.x < neigh.x + neigh.w &&
+      this.tractor.y > neigh.y &&
+      this.tractor.y < neigh.y + neigh.h;
+    if (inN && this.trailerBales > 0) {
+      this.deliveredBales += this.trailerBales;
+      this.trailerBales = 0;
+    }
+    const need = Math.max(3, this.bales.filter((b) => b.wrapped).length || 3);
+    this.missionProgress = Math.min(1, (this.deliveredBales + this.trailerBales * 0.35) / need);
+    this.updateHud();
+    if (this.deliveredBales >= need) {
+      this.missionProgress = 1;
+      this.completePhase();
+    }
+  }
+
+  /** Ensure wrapped bales exist for neighbor / hay haul phases. */
+  private ensureNeighborBales(): void {
+    const wrapped = this.bales.filter((b) => b.wrapped && !(b as { hauled?: boolean }).hauled);
+    if (wrapped.length >= 3) return;
+    const meadow = this.zones.find((z) => z.id === 'leftField');
+    if (!meadow) return;
+    while (this.bales.filter((b) => b.wrapped).length < 3) {
+      this.bales.push({
+        x: meadow.x + 80 + Math.random() * (meadow.w - 160),
+        y: meadow.y + 80 + Math.random() * (meadow.h - 160),
+        wrapped: true,
+      });
     }
   }
 
@@ -1678,6 +1908,36 @@ export class FarmGame {
     }
   }
 
+  /** Hay finale: load wrapped bales on trailer → barnYard. */
+  private workHaulHayBales(): void {
+    for (const b of this.bales) {
+      if (!b.wrapped) continue;
+      if ((b as { hauled?: boolean }).hauled) continue;
+      const d = Math.hypot(b.x - this.tractor.x, b.y - this.tractor.y);
+      if (d < 70 && this.trailerBales < 6) {
+        (b as { hauled?: boolean }).hauled = true;
+        this.trailerBales++;
+      }
+    }
+    const yard = this.zones.find((z) => z.id === 'barnYard')!;
+    const inYard =
+      this.tractor.x > yard.x &&
+      this.tractor.x < yard.x + yard.w &&
+      this.tractor.y > yard.y &&
+      this.tractor.y < yard.y + yard.h;
+    if (inYard && this.trailerBales > 0) {
+      this.deliveredBales += this.trailerBales;
+      this.trailerBales = 0;
+    }
+    const need = Math.max(1, this.bales.filter((b) => b.wrapped).length);
+    this.missionProgress = Math.min(1, (this.deliveredBales + this.trailerBales * 0.35) / need);
+    this.updateHud();
+    if (need > 0 && this.deliveredBales >= need) {
+      this.missionProgress = 1;
+      this.completePhase();
+    }
+  }
+
   private workWrapMeadow(): void {
     let wrapped = 0;
     for (const b of this.bales) {
@@ -1845,9 +2105,14 @@ export class FarmGame {
     this.drawCornOverlay(ctx);
     this.drawForest(ctx);
     this.drawWashBay(ctx);
+    this.drawMudPath(ctx);
+    this.drawYardDirt(ctx);
     this.drawOpenBarn(ctx);
     this.drawSilagePile(ctx);
     this.drawBarnYardLogs(ctx);
+    this.drawNeighborYard(ctx);
+    this.drawFenceCorridor(ctx);
+    this.drawLostLamb(ctx);
     this.drawHay(ctx);
     this.drawBales(ctx);
     this.drawWanderers(ctx);
@@ -1856,6 +2121,7 @@ export class FarmGame {
     this.drawBirds(ctx);
     this.drawMissionHighlight(ctx);
     this.drawTractor(ctx);
+    this.drawNightOverlay(ctx);
 
     ctx.restore();
 
@@ -2128,6 +2394,159 @@ export class FarmGame {
         }
       }
     }
+  }
+
+  private drawMudPath(ctx: CanvasRenderingContext2D): void {
+    const mud = this.zones.find((z) => z.id === 'mudPath');
+    if (!mud) return;
+    ctx.fillStyle = 'rgba(90, 70, 45, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(mud.x + mud.w / 2, mud.y + mud.h / 2, mud.w * 0.48, mud.h * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(60, 45, 30, 0.18)';
+    for (let i = 0; i < 5; i++) {
+      const px = mud.x + 30 + i * 48;
+      const py = mud.y + 40 + (i % 2) * 28;
+      ctx.beginPath();
+      ctx.ellipse(px, py, 18, 10, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (this.mudFactor < 0.95) {
+      ctx.fillStyle = 'rgba(255, 235, 180, 0.55)';
+      ctx.font = '600 13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('BLATO', mud.x + mud.w / 2, mud.y + 22);
+    }
+  }
+
+  private drawYardDirt(ctx: CanvasRenderingContext2D): void {
+    for (const cell of this.yardCells) {
+      if (!cell.dirty) continue;
+      const rx = cell.x - cell.w / 2 + 3;
+      const ry = cell.y - cell.h / 2 + 3;
+      ctx.fillStyle = 'rgba(80, 60, 40, 0.35)';
+      ctx.fillRect(rx, ry, cell.w - 6, cell.h - 6);
+      // litter bits
+      ctx.fillStyle = 'rgba(120, 100, 70, 0.55)';
+      for (let i = 0; i < 4; i++) {
+        const lx = cell.x - 12 + (i % 2) * 18;
+        const ly = cell.y - 8 + Math.floor(i / 2) * 14;
+        ctx.beginPath();
+        ctx.ellipse(lx, ly, 5, 3, i * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(255, 193, 7, 0.25)';
+      ctx.beginPath();
+      ctx.arc(cell.x, cell.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawNeighborYard(ctx: CanvasRenderingContext2D): void {
+    const n = this.zones.find((z) => z.id === 'neighbor');
+    if (!n) return;
+    ctx.fillStyle = 'rgba(120, 160, 90, 0.12)';
+    ctx.fillRect(n.x, n.y, n.w, n.h);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(n.x + 4, n.y + 4, n.w - 8, n.h - 8);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.font = '600 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SOSED', n.x + n.w / 2, n.y + 28);
+    // delivered bale stack
+    const shown = Math.min(this.deliveredBales, 6);
+    for (let i = 0; i < shown; i++) {
+      const bx = n.x + 50 + (i % 3) * 55;
+      const by = n.y + 70 + Math.floor(i / 3) * 40;
+      ctx.fillStyle = '#66bb6a';
+      ctx.beginPath();
+      ctx.ellipse(bx, by, 18, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawFenceCorridor(ctx: CanvasRenderingContext2D): void {
+    const f = this.zones.find((z) => z.id === 'fenceCorridor');
+    if (!f) return;
+    // Top and bottom fence rails
+    ctx.strokeStyle = 'rgba(90, 60, 30, 0.55)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(f.x, f.y);
+    ctx.lineTo(f.x + f.w, f.y);
+    ctx.moveTo(f.x, f.y + f.h);
+    ctx.lineTo(f.x + f.w, f.y + f.h);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(120, 90, 50, 0.4)';
+    ctx.lineWidth = 2;
+    for (let x = f.x + 20; x < f.x + f.w; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, f.y);
+      ctx.lineTo(x, f.y + f.h);
+      ctx.stroke();
+    }
+  }
+
+  private drawLostLamb(ctx: CanvasRenderingContext2D): void {
+    if (this.currentMission().id !== 'night' && !this.lostLamb.found) {
+      // only show during night mission
+    }
+    if (this.currentMission().id !== 'night') return;
+    const { x, y, found } = this.lostLamb;
+    const bob = Math.sin(this.pulse * 3) * 2;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    // sheep body
+    ctx.fillStyle = found ? '#fff8e1' : '#f5f5f5';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 16, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#212121';
+    ctx.beginPath();
+    ctx.arc(12, -2, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(13.5, -3, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (!found) {
+      ctx.fillStyle = 'rgba(255, 235, 59, 0.7)';
+      ctx.font = '700 14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', 0, -20);
+    }
+    ctx.restore();
+  }
+
+  private drawNightOverlay(ctx: CanvasRenderingContext2D): void {
+    if (this.currentMission().id !== 'night' || this.gameDone) return;
+    const ang = this.tractor.angle;
+    // Dark veil with headlights cone + cabin cut out (evenodd — safe)
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 12, 28, 0.78)';
+    ctx.beginPath();
+    ctx.rect(0, 0, MAP_W, MAP_H);
+    // headlight cone hole
+    ctx.moveTo(this.tractor.x, this.tractor.y);
+    ctx.arc(this.tractor.x, this.tractor.y, 230, ang - 0.58, ang + 0.58);
+    ctx.closePath();
+    // cabin hole
+    ctx.moveTo(this.tractor.x + 48, this.tractor.y);
+    ctx.arc(this.tractor.x, this.tractor.y, 48, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fill('evenodd');
+    ctx.restore();
+    // Warm headlight wash
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255, 236, 170, 0.14)';
+    ctx.beginPath();
+    ctx.moveTo(this.tractor.x, this.tractor.y);
+    ctx.arc(this.tractor.x, this.tractor.y, 210, ang - 0.5, ang + 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawWashBay(ctx: CanvasRenderingContext2D): void {
@@ -2457,6 +2876,7 @@ export class FarmGame {
 
   private drawBales(ctx: CanvasRenderingContext2D): void {
     for (const b of this.bales) {
+      if ((b as { hauled?: boolean }).hauled) continue;
       ctx.fillStyle = b.wrapped ? '#43a047' : '#f0b429';
       ctx.beginPath();
       ctx.ellipse(b.x, b.y, 26, 18, 0.2, 0, Math.PI * 2);
@@ -2820,8 +3240,23 @@ export class FarmGame {
     const longAxis = size * s;
     ctx.rotate(tune.rot);
     ctx.translate((tune.offsetX ?? 0) * longAxis, tune.offsetY * longAxis);
-    ctx.scale(s, s);
-    this.drawFallbackImplement(ctx, id);
+
+    const img = this.implementImgs[id];
+    if (img) {
+      // Real photo sprites: image +X → local +Y (toward tractor) via +90°.
+      if (tune.flip) ctx.scale(-1, 1);
+      ctx.rotate(Math.PI / 2);
+      const iw = img.width || 1;
+      const ih = img.height || 1;
+      const maxDim = Math.max(iw, ih);
+      const drawW = size * s * (iw / maxDim) * 1.25;
+      const drawH = size * s * (ih / maxDim) * 1.25;
+      // Hitch near image right (after flip) sits on pin; body trails −Y.
+      ctx.drawImage(img, -drawW + size * 0.06, -drawH / 2, drawW, drawH);
+    } else {
+      ctx.scale(s, s);
+      this.drawFallbackImplement(ctx, id);
+    }
 
     ctx.restore();
   }
@@ -3047,6 +3482,29 @@ export class FarmGame {
       ctx.fill();
       wheel(-12, 2, 5.5);
       wheel(12, 2, 5.5);
+      return;
+    }
+    if (id === "metla") {
+      // Rotary broom: yellow brush cylinder + dark hood
+      ctx.fillStyle = "#263238";
+      roundRectPath(ctx, -28, -18, 56, 14, 4);
+      ctx.fill();
+      ctx.fillStyle = "#fdd835";
+      roundRectPath(ctx, -30, -8, 60, 16, 6);
+      ctx.fill();
+      for (let i = -6; i <= 6; i++) {
+        ctx.strokeStyle = i % 2 === 0 ? "#f9a825" : "#ffee58";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(i * 4.2, -6);
+        ctx.lineTo(i * 4.2, 10);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#455a64";
+      ctx.fillRect(-4, -34, 8, 18);
+      wheel(-16, 8, 5);
+      wheel(16, 8, 5);
+      wheel(0, 10, 4.5);
       return;
     }
     if (id === "krtaca") {
