@@ -325,26 +325,22 @@ export class FarmGame {
    */
   private hitchTune: Record<
     ImplementId,
-    { rot: number; offsetY: number; offsetX?: number; scale: number; flip?: boolean }
+    { rot: number; offsetY: number; offsetX?: number; scale: number; flip?: boolean; front?: boolean }
   > = {
-    // offsetY nudges body along hitch axis (+ toward tractor). Keep small so
-    // tongue stays short and wheels sit near ground behind the pin.
-    // flip: photo has hitch on image LEFT (mirror so hitch ends on RIGHT → +Y toward tractor).
-    // Photos verified Sep 2026: hitch-LEFT need flip; hitch-RIGHT leave alone.
-    plug: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.15 },
-    balirka: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.2, flip: true },
-    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.12 },
-    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.18, flip: true },
-    zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.02 },
-    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.25 },
-    kombajn: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.1 },
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.28, flip: true },
-    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.2, flip: true },
-    krtaca: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
-    vitla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15, flip: true },
-    silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
-    metla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.15, flip: true },
+    // Proportional to TRACTOR_DRAW. Hitch on image RIGHT (or flip).
+    plug: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.0 },
+    balirka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.08 },
+    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
+    kosilnica: { rot: 0, offsetX: 0.12, offsetY: 0.02, scale: 1.05 },
+    zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.05 },
+    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.18 },
+    kombajn: { rot: 0, offsetX: 0.18, offsetY: 0.04, scale: 1.12 },
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.22, flip: true },
+    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.2, flip: true },
+    vitla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.78 },
+    silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.0 },
+    metla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.95, front: true },
   };
 
   private ready = false;
@@ -400,7 +396,8 @@ export class FarmGame {
     lastY: 0,
   };
 
-  private selectedImplement: ImplementId = 'plug';
+  private selectedImplement: ImplementId | null = 'plug';
+  private washBayImg: HTMLCanvasElement | null = null;
   private wrongEquipFlash = 0;
 
   private missionIndex = 0;
@@ -494,9 +491,9 @@ export class FarmGame {
         kombajn,
         prikolica,
         krmilnik,
-        krtaca,
         vitla,
         metla,
+        washBayRaw,
         ...tractorRaws
       ] = await Promise.all([
         loadImage('./mapa.png'),
@@ -511,9 +508,9 @@ export class FarmGame {
         loadImage('./kombajn.png'),
         loadImage('./prikolica.png'),
         loadImage('./krmilnik.png'),
-        loadImage('./krtaca.png'),
         loadImage('./vitla.png'),
         loadImage('./metla.png'),
+        loadImage('./avtopralnica.png'),
         ...TRACTORS.map((t) => loadImage(t.src)),
       ]);
       this.mapImg = map;
@@ -545,9 +542,9 @@ export class FarmGame {
       this.implementImgs.kombajn = keyCrop(kombajn);
       this.implementImgs.prikolica = keyCrop(prikolica);
       this.implementImgs.krmilnik = keyCrop(krmilnik);
-      this.implementImgs.krtaca = keyCrop(krtaca);
       this.implementImgs.vitla = keyCrop(vitla);
       this.implementImgs.metla = keyCrop(metla);
+      this.washBayImg = keyCrop(washBayRaw);
       this.ready = true;
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
@@ -918,6 +915,29 @@ export class FarmGame {
   /** Show all implements; player must pick the correct one for the phase. */
   private rebuildImplementBar(): void {
     this.implementBar.innerHTML = '';
+    {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'impl-btn';
+      btn.dataset.id = '';
+      btn.setAttribute('aria-label', 'Brez priključka');
+      btn.innerHTML = '<span class="impl-icon" aria-hidden="true">🔓</span><span class="impl-label">Brez</span>';
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        unlockSpeech();
+        unlockSfx();
+        this.selectImplement(null);
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        unlockSpeech();
+        unlockSfx();
+        this.selectImplement(null);
+      });
+      this.implementBar.appendChild(btn);
+    }
     for (const item of IMPLEMENTS) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -954,7 +974,9 @@ export class FarmGame {
   private refreshImplementBarIcons(): void {
     const buttons = this.implementBar.querySelectorAll<HTMLButtonElement>('.impl-btn');
     buttons.forEach((btn) => {
-      const id = btn.dataset.id as ImplementId;
+      const raw = btn.dataset.id ?? '';
+      if (!raw) return;
+      const id = raw as ImplementId;
       const slot = btn.querySelector('.impl-icon');
       if (!slot) return;
       const img = this.implementImgs[id];
@@ -978,14 +1000,23 @@ export class FarmGame {
     });
   }
 
-  private selectImplement(id: ImplementId): void {
+  private selectImplement(id: ImplementId | null): void {
     this.selectedImplement = id;
     this.refreshImplementBar();
     this.refreshGarageButton();
-    const label = IMPLEMENTS.find((i) => i.id === id)?.label ?? id;
     const needed = this.currentImplement();
+    if (id === null) {
+      if (needed === null) this.showToast('Brez priključka — pelji na avtopralnico!', 1600);
+      else this.showToast('Priključek odklopljen', 1200);
+      return;
+    }
+    const label = IMPLEMENTS.find((i) => i.id === id)?.label ?? id;
     if (id === needed) {
       this.showToast(`${label} priklopljen!`, 1400);
+    } else if (needed === null) {
+      this.wrongEquipFlash = 1.2;
+      sfxWrong();
+      this.showToast('Za pranje odklopiti priključek', 1800);
     } else {
       this.wrongEquipFlash = 1.2;
       sfxWrong();
@@ -995,6 +1026,9 @@ export class FarmGame {
 
   /** On phase/mission start: rebuild all tools + soft needed hint; keep prior selection. */
   private prepareImplementsForPhase(): void {
+    if (this.currentImplement() === null) {
+      this.selectedImplement = null;
+    }
     this.rebuildImplementBar();
     this.refreshImplementBar();
   }
@@ -1021,14 +1055,17 @@ export class FarmGame {
     const needed = this.currentImplement();
     const buttons = this.implementBar.querySelectorAll<HTMLButtonElement>('.impl-btn');
     buttons.forEach((btn) => {
-      const id = btn.dataset.id as ImplementId;
+      const raw = btn.dataset.id ?? '';
+      const id = raw === '' ? null : (raw as ImplementId);
       btn.classList.toggle('active', id === this.selectedImplement);
       btn.classList.toggle('needed', id === needed && !this.gameDone);
     });
   }
 
   private hasCorrectImplement(): boolean {
-    return this.selectedImplement === this.currentImplement();
+    const needed = this.currentImplement();
+    if (needed === null) return this.selectedImplement === null;
+    return this.selectedImplement === needed;
   }
 
   private currentMission(): Mission {
@@ -1040,7 +1077,7 @@ export class FarmGame {
     return m.phases[Math.min(this.phaseIndex, m.phases.length - 1)];
   }
 
-  private currentImplement(): ImplementId {
+  private currentImplement(): ImplementId | null {
     return this.currentPhase().implement;
   }
 
@@ -1083,6 +1120,11 @@ export class FarmGame {
   /** HUD chip: required implement emoji/sprite + name for current phase. */
   private refreshMissionNeed(): void {
     const id = this.currentImplement();
+    if (id === null) {
+      this.missionNeedLabel.textContent = 'Brez priključka';
+      this.missionNeedIcon.textContent = '🧼';
+      return;
+    }
     const meta = IMPLEMENTS.find((i) => i.id === id);
     this.missionNeedLabel.textContent = meta?.label ?? id;
     const img = this.implementImgs[id];
@@ -1115,8 +1157,12 @@ export class FarmGame {
     }
     const needed = this.currentImplement();
     if (this.selectedImplement === needed) {
-      const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
-      this.showToast(`${label} je že priklopljen`, 1200);
+      if (needed === null) {
+        this.showToast('Že brez priključka', 1200);
+      } else {
+        const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
+        this.showToast(`${label} je že priklopljen`, 1200);
+      }
       return;
     }
     this.selectImplement(needed);
@@ -1132,11 +1178,17 @@ export class FarmGame {
     this.garageBtn.hidden = !show;
     if (show) {
       const needed = this.currentImplement();
-      const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
       const already = this.selectedImplement === needed;
-      this.garageBtn.textContent = already
-        ? `Priklop: ${label} ✓`
-        : `Zamenjaj priključek → ${label}`;
+      if (needed === null) {
+        this.garageBtn.textContent = already
+          ? 'Brez priključka ✓'
+          : 'Odklop priključka (pranje)';
+      } else {
+        const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
+        this.garageBtn.textContent = already
+          ? `Priklop: ${label} ✓`
+          : `Zamenjaj priključek → ${label}`;
+      }
     }
   }
 
@@ -2591,29 +2643,38 @@ export class FarmGame {
   private drawWashBay(ctx: CanvasRenderingContext2D): void {
     const bay = this.zones.find((z) => z.id === 'washBay');
     if (!bay) return;
-    ctx.fillStyle = 'rgba(80, 100, 120, 0.1)';
-    ctx.fillRect(bay.x, bay.y, bay.w, bay.h);
-    ctx.strokeStyle = 'rgba(180, 220, 255, 0.35)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(bay.x + 4, bay.y + 4, bay.w - 8, bay.h - 8);
-    // Soap bubbles / water
     const cx = bay.x + bay.w / 2;
     const cy = bay.y + bay.h / 2;
-    ctx.fillStyle = 'rgba(100, 180, 255, 0.18)';
-    ctx.fillRect(bay.x + 20, bay.y + 40, bay.w - 40, 40);
-    for (let i = 0; i < 6; i++) {
-      const bx = cx - 50 + i * 20;
-      const by = cy - 20 + Math.sin(this.pulse * 3 + i) * 6;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(bx, by, 6 + (i % 3), 0, Math.PI * 2);
-      ctx.stroke();
+    ctx.fillStyle = 'rgba(80, 100, 120, 0.08)';
+    ctx.fillRect(bay.x, bay.y, bay.w, bay.h);
+    if (this.washBayImg) {
+      const img = this.washBayImg;
+      const maxW = bay.w * 0.95;
+      const maxH = bay.h * 0.95;
+      const sc = Math.min(maxW / img.width, maxH / img.height);
+      const dw = img.width * sc;
+      const dh = img.height * sc;
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    } else {
+      ctx.strokeStyle = 'rgba(180, 220, 255, 0.35)';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(bay.x + 4, bay.y + 4, bay.w - 8, bay.h - 8);
+      ctx.fillStyle = 'rgba(255, 220, 80, 0.85)';
+      ctx.font = '700 18px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('AVTOPRALNICA', cx, bay.y + 28);
     }
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.font = '600 16px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('PRALNICA', cx, bay.y + 28);
+    if (this.currentMission().id === 'wash' && this.tractorDirt > 0.02) {
+      for (let i = 0; i < 6; i++) {
+        const bx = cx - 50 + i * 20;
+        const by = cy - 10 + Math.sin(this.pulse * 3 + i) * 8;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bx, by, 5 + (i % 3), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
   }
 
   private drawOpenBarn(ctx: CanvasRenderingContext2D): void {
@@ -3238,10 +3299,13 @@ export class FarmGame {
     ctx.restore();
   }
 
-  /** Hitch implement behind tractor (local −Y, pin at rear). */
+  /** Hitch implement behind tractor (local −Y) or FRONT for metla (+Y). */
   private drawImplement(ctx: CanvasRenderingContext2D, size: number, rear = -size * 0.42): void {
     const id = this.selectedImplement;
+    if (!id) return;
     const tune = this.hitchTune[id];
+    const front = !!tune.front;
+    const pin = front ? size * 0.48 : rear;
 
     ctx.save();
     ctx.globalAlpha = 0.98;
@@ -3258,41 +3322,43 @@ export class FarmGame {
     const shadowW =
       id === 'kosilnica' || id === 'kombajn' ? size * 0.32 : size * 0.24;
     ctx.beginPath();
-    ctx.ellipse(0, rear - shadowLen * 0.4, shadowW, size * 0.08, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, pin - (front ? -1 : 1) * shadowLen * 0.4, shadowW, size * 0.08, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Short centerline tongue from rear axle to hitch pin
-    ctx.strokeStyle = '#455a64';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(0, -size * 0.02);
-    ctx.lineTo(0, rear);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(176, 190, 197, 0.5)';
-    ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(-1.1, -size * 0.015);
-    ctx.lineTo(-1.1, rear + 1);
-    ctx.stroke();
+    // Short centerline tongue (rear only); front mounts sit on nose pin
+    if (!front) {
+      ctx.strokeStyle = '#455a64';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, -size * 0.02);
+      ctx.lineTo(0, pin);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(176, 190, 197, 0.5)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(-1.1, -size * 0.015);
+      ctx.lineTo(-1.1, pin + 1);
+      ctx.stroke();
+    }
     // Hitch pin on centerline
     ctx.fillStyle = '#78909c';
     ctx.beginPath();
-    ctx.arc(0, rear, 3.0, 0, Math.PI * 2);
+    ctx.arc(0, pin, 3.0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#37474f';
     ctx.lineWidth = 1.15;
     ctx.beginPath();
-    ctx.arc(0, rear, 3.0, 0, Math.PI * 2);
+    ctx.arc(0, pin, 3.0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = '#cfd8dc';
     ctx.beginPath();
-    ctx.arc(0, rear, 1.2, 0, Math.PI * 2);
+    ctx.arc(0, pin, 1.2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Implement relative to hitch pin; canvas fallbacks (hitch at +Y, body −Y)
-    ctx.translate(0, rear);
+    // Implement relative to hitch pin
+    ctx.translate(0, pin);
 
     const s = tune.scale;
     const longAxis = size * s;
@@ -3304,15 +3370,16 @@ export class FarmGame {
       // Real photo sprites: image +X → local +Y (toward tractor) via +90°.
       if (tune.flip) ctx.scale(-1, 1);
       ctx.rotate(Math.PI / 2);
+      if (front) ctx.rotate(Math.PI);
       const iw = img.width || 1;
       const ih = img.height || 1;
       const maxDim = Math.max(iw, ih);
       const drawW = size * s * (iw / maxDim) * 1.25;
       const drawH = size * s * (ih / maxDim) * 1.25;
-      // Hitch near image right (after flip) sits on pin; body trails −Y.
       ctx.drawImage(img, -drawW + size * 0.06, -drawH / 2, drawW, drawH);
     } else {
       ctx.scale(s, s);
+      if (front) ctx.rotate(Math.PI);
       this.drawFallbackImplement(ctx, id);
     }
 
@@ -3563,33 +3630,6 @@ export class FarmGame {
       wheel(-16, 8, 5);
       wheel(16, 8, 5);
       wheel(0, 10, 4.5);
-      return;
-    }
-    if (id === "krtaca") {
-      ctx.fillStyle = "#01579b";
-      roundRectPath(ctx, -22, -28, 44, 20, 6);
-      ctx.fill();
-      ctx.fillStyle = "#0288d1";
-      roundRectPath(ctx, -20, -26, 40, 9, 4);
-      ctx.fill();
-      for (let i = -5; i <= 5; i++) {
-        ctx.fillStyle = i % 2 === 0 ? "#4fc3f7" : "#b3e5fc";
-        roundRectPath(ctx, i * 3.6 - 1.4, -10, 2.8, 16, 1);
-        ctx.fill();
-      }
-      ctx.strokeStyle = "rgba(227, 242, 253, 0.85)";
-      ctx.lineWidth = 1.3;
-      for (const [bx, by, br] of [[-10, -30, 3.2], [3, -34, 2.6], [14, -28, 2.8]] as const) {
-        ctx.beginPath();
-        ctx.arc(bx, by, br, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
-        ctx.beginPath();
-        ctx.arc(bx - br * 0.3, by - br * 0.3, br * 0.28, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      wheel(-14, 0, 5);
-      wheel(14, 0, 5);
       return;
     }
     if (id === "silazer") {

@@ -23,11 +23,11 @@ export type ImplementId =
   | 'vitla'
   | 'prikolica'
   | 'krmilnik'
-  | 'krtaca'
   | 'metla';
 
 export interface MissionPhase {
-  implement: ImplementId;
+  /** Required hitch; null = no implement (wash bay). */
+  implement: ImplementId | null;
   /** Short phase label shown in HUD hint. */
   hint: string;
   /** Optional toast when this phase finishes (before mission success). */
@@ -60,7 +60,6 @@ export const IMPLEMENTS: {
   { id: 'vitla', label: 'Vitla', shortLabel: 'Vitla', emoji: '🪵' },
   { id: 'prikolica', label: 'Prikolica', shortLabel: 'Prikol.', emoji: '🪵' },
   { id: 'krmilnik', label: 'Mešalnik', shortLabel: 'Mešal.', emoji: '🐄' },
-  { id: 'krtaca', label: 'Krtača', shortLabel: 'Krtača', emoji: '🧽' },
   { id: 'metla', label: 'Metla', shortLabel: 'Metla', emoji: '🟡' },
 ];
 
@@ -183,8 +182,8 @@ export const MISSIONS: Mission[] = [
     success: 'Traktor je čist!',
     phases: [
       {
-        implement: 'krtaca',
-        hint: 'Pelji skozi avtopralnico pri hlevu (milo in voda).',
+        implement: null,
+        hint: 'Pelji na avtopralnico (brez priključka) — milo in voda očistita traktor.',
       },
     ],
   },
