@@ -85,6 +85,30 @@ interface Bird {
   phase: number;
 }
 
+interface Wanderer {
+  kind: 'cow' | 'sheep';
+  x: number;
+  y: number;
+  angle: number;
+  bob: number;
+  homeX: number;
+  homeY: number;
+  tx: number;
+  ty: number;
+  wait: number;
+}
+
+interface FxParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
 /** Playable world / mapa.png size (full-bleed). */
 const MAP_W = 1920;
 const MAP_H = 1280;
@@ -218,6 +242,8 @@ export class FarmGame {
   private bales: { x: number; y: number; wrapped: boolean }[] = [];
   private birds: Bird[] = [];
   private grassWaves: { x: number; y: number; phase: number }[] = [];
+  private wanderers: Wanderer[] = [];
+  private particles: FxParticle[] = [];
   /** Logs currently on the trailer. */
   private trailerLogs = 0;
   /** Logs delivered to barn yard. */
@@ -229,13 +255,13 @@ export class FarmGame {
   /** Cooldown so wash splash beep is not every frame. */
   private washSfxCd = 0;
 
-  private tractor = { x: 720, y: 520, angle: -Math.PI / 2 };
+  private tractor = { x: 680, y: 860, angle: -Math.PI / 2 };
   private speed = TRACTOR_SPEED;
   private bouncePhase = 0;
   private moving = false;
 
   /** World-space camera center (smooth follow). */
-  private cam = { x: 720, y: 520 };
+  private cam = { x: 680, y: 860 };
   /** Optional nudge from one-finger drag on empty map. */
   private camNudge = { x: 0, y: 0 };
   private pan = {
@@ -358,22 +384,24 @@ export class FarmGame {
   }
 
   private buildWorld(): void {
+    // Calibrated to painted features on mapa.png (1920×1280)
     this.zones = [
-      { id: 'pond', x: 60, y: 40, w: 380, h: 320 },
-      { id: 'leftField', x: 70, y: 520, w: 420, h: 280 },
-      { id: 'rightField', x: 980, y: 160, w: 420, h: 300 },
-      { id: 'cornField', x: 1560, y: 120, w: 320, h: 420 },
-      { id: 'forest', x: 1560, y: 580, w: 320, h: 420 },
-      { id: 'barn', x: 1080, y: 620, w: 400, h: 340 },
-      // Equipment shed / 3-point hitch swap (rear of barn yard)
-      { id: 'garage', x: 1180, y: 980, w: 240, h: 200 },
+      { id: 'pond', x: 90, y: 60, w: 460, h: 340 },
+      { id: 'leftField', x: 50, y: 540, w: 600, h: 520 },
+      { id: 'rightField', x: 880, y: 70, w: 640, h: 280 },
+      { id: 'cornField', x: 1550, y: 20, w: 350, h: 340 },
+      { id: 'forest', x: 1400, y: 640, w: 500, h: 620 },
+      { id: 'barn', x: 1100, y: 480, w: 360, h: 380 },
+      // Equipment shed below red barn
+      { id: 'garage', x: 1080, y: 880, w: 280, h: 190 },
       { id: 'hay', x: 980, y: 700, w: 200, h: 180 },
-      // Open barn / feed alley — tractor drives middle, cows both sides
-      { id: 'openBarn', x: 620, y: 360, w: 320, h: 300 },
-      { id: 'trough', x: 700, y: 420, w: 160, h: 120 },
-      // Auto-wash by barn (replaces pond wash)
-      { id: 'washBay', x: 900, y: 1040, w: 240, h: 170 },
-      { id: 'barnYard', x: 1040, y: 900, w: 220, h: 160 },
+      // Open barn / feed alley — left of red barn
+      { id: 'openBarn', x: 720, y: 480, w: 340, h: 380 },
+      { id: 'trough', x: 820, y: 560, w: 140, h: 120 },
+      // Wash station below open barn
+      { id: 'washBay', x: 740, y: 880, w: 240, h: 180 },
+      // Log drop yard between wash / garage / forest
+      { id: 'barnYard', x: 980, y: 1000, w: 340, h: 200 },
     ];
     this.resetWorldState();
   }
@@ -459,7 +487,8 @@ export class FarmGame {
     }
     this.trailerLogs = 0;
     this.deliveredLogs = 0;
-    this.silagePile = { x: 1100, y: 980, amount: 0 };
+    this.silagePile = { x: 1220, y: 920, amount: 0 };
+    this.particles = [];
 
     // Legacy barn-side hay (hidden — meadow workflow uses leftField)
     this.hayPatches = [
@@ -513,7 +542,36 @@ export class FarmGame {
       });
     }
 
-    this.tractor = { x: 720, y: 520, angle: -Math.PI / 2 };
+    // Living pasture wanderers on leftField (decorative; feed animals stay in openBarn)
+    const pasture = this.zones.find((z) => z.id === 'leftField')!;
+    this.wanderers = [];
+    const wSpots: Array<['cow' | 'sheep', number, number]> = [
+      ['cow', 0.22, 0.28],
+      ['sheep', 0.48, 0.22],
+      ['cow', 0.7, 0.4],
+      ['sheep', 0.35, 0.58],
+      ['cow', 0.58, 0.72],
+      ['sheep', 0.18, 0.78],
+    ];
+    for (const [kind, fx, fy] of wSpots) {
+      const wx = pasture.x + pasture.w * fx;
+      const wy = pasture.y + pasture.h * fy;
+      this.wanderers.push({
+        kind,
+        x: wx,
+        y: wy,
+        angle: Math.random() * Math.PI * 2,
+        bob: Math.random() * Math.PI * 2,
+        homeX: wx,
+        homeY: wy,
+        tx: wx,
+        ty: wy,
+        wait: Math.random() * 2,
+      });
+    }
+
+    // Path between open barn and wash / garage
+    this.tractor = { x: 680, y: 860, angle: -Math.PI / 2 };
     this.cam = { x: this.tractor.x, y: this.tractor.y };
     this.camNudge = { x: 0, y: 0 };
     this.moving = false;
@@ -1005,7 +1063,9 @@ export class FarmGame {
     if (this.washSfxCd > 0) this.washSfxCd -= dt;
 
     this.updateAnimals(dt);
+    this.updateWanderers(dt);
     this.updateBirds(dt);
+    this.updateParticles(dt);
     this.updateGarageProximity();
 
     // Ease camera nudge back toward tractor-follow
@@ -1097,6 +1157,74 @@ export class FarmGame {
         b.y = 60 + Math.random() * 300;
       }
     }
+  }
+
+  private updateWanderers(dt: number): void {
+    const pasture = this.zones.find((z) => z.id === 'leftField');
+    if (!pasture) return;
+    const pad = 48;
+    const minX = pasture.x + pad;
+    const maxX = pasture.x + pasture.w - pad;
+    const minY = pasture.y + pad;
+    const maxY = pasture.y + pasture.h - pad;
+    for (const a of this.wanderers) {
+      a.bob += dt * 2.0;
+      a.wait -= dt;
+      if (a.wait <= 0) {
+        const dx = a.tx - a.x;
+        const dy = a.ty - a.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 5) {
+          a.wait = 1.5 + Math.random() * 3.5;
+          const ang = Math.random() * Math.PI * 2;
+          const rad = 40 + Math.random() * 90;
+          a.tx = Math.max(minX, Math.min(maxX, a.homeX + Math.cos(ang) * rad));
+          a.ty = Math.max(minY, Math.min(maxY, a.homeY + Math.sin(ang) * rad * 0.85));
+        } else {
+          const speed = 18;
+          a.x += (dx / dist) * speed * dt;
+          a.y += (dy / dist) * speed * dt;
+          a.angle = Math.atan2(dy, dx);
+        }
+      }
+    }
+  }
+
+  private updateParticles(dt: number): void {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 40 * dt;
+      p.vx *= 0.98;
+      if (p.life <= 0) this.particles.splice(i, 1);
+    }
+  }
+
+  private spawnParticles(
+    x: number,
+    y: number,
+    n: number,
+    colors: string[],
+    speed = 70,
+  ): void {
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = speed * (0.35 + Math.random() * 0.9);
+      const life = 0.35 + Math.random() * 0.55;
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 12,
+        y: y + (Math.random() - 0.5) * 8,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 30,
+        life,
+        maxLife: life,
+        color: colors[i % colors.length],
+        size: 2 + Math.random() * 3.5,
+      });
+    }
+    if (this.particles.length > 180) this.particles.splice(0, this.particles.length - 180);
   }
 
   private doMissionWork(): void {
@@ -1241,6 +1369,7 @@ export class FarmGame {
       if (cell.state === 'planted' && this.tractorHitsCell(cell.x, cell.y, cell.w, cell.h)) {
         cell.state = 'chopped';
         this.silagePile.amount = Math.min(1, this.silagePile.amount + 1 / this.cornCells.length);
+        this.spawnParticles(cell.x, cell.y, 10, ['#c8e66a', '#fdd835', '#8bc34a', '#fff59d'], 90);
         sfxChop();
       }
       if (cell.state === 'chopped') done++;
@@ -1261,6 +1390,7 @@ export class FarmGame {
         if (d < t.r + 55) {
           t.felled = true;
           t.logOnGround = true;
+          this.spawnParticles(t.x, t.y, 14, ['#8d6e63', '#a1887f', '#d7ccc8', '#5d4037', '#2e7d32'], 110);
           sfxFell();
         }
       }
@@ -1463,6 +1593,7 @@ export class FarmGame {
     ctx.drawImage(this.mapImg, 0, 0, MAP_W, MAP_H);
     this.drawExpandedZones(ctx);
 
+    this.drawPondShimmer(ctx);
     this.drawWindGrass(ctx);
     this.drawFieldOverlay(ctx);
     this.drawMeadowOverlay(ctx);
@@ -1474,7 +1605,9 @@ export class FarmGame {
     this.drawBarnYardLogs(ctx);
     this.drawHay(ctx);
     this.drawBales(ctx);
+    this.drawWanderers(ctx);
     this.drawAnimals(ctx);
+    this.drawParticles(ctx);
     this.drawBirds(ctx);
     this.drawMissionHighlight(ctx);
     this.drawTractor(ctx);
@@ -1487,6 +1620,80 @@ export class FarmGame {
       const a = Math.min(1, this.wrongEquipFlash) * 0.35;
       ctx.fillStyle = `rgba(180, 40, 20, ${a})`;
       ctx.fillRect(0, 0, w, 6);
+    }
+  }
+
+  private drawPondShimmer(ctx: CanvasRenderingContext2D): void {
+    const pond = this.zones.find((z) => z.id === 'pond');
+    if (!pond) return;
+    const cx = pond.x + pond.w * 0.48;
+    const cy = pond.y + pond.h * 0.52;
+    const t = this.pulse;
+    ctx.save();
+    for (let i = 0; i < 5; i++) {
+      const phase = t * (0.7 + i * 0.15) + i * 1.3;
+      const rx = pond.w * (0.18 + i * 0.05) + Math.sin(phase) * 8;
+      const ry = pond.h * (0.12 + i * 0.03) + Math.cos(phase * 0.9) * 5;
+      const ox = Math.sin(phase * 0.8 + i) * 10;
+      const oy = Math.cos(phase * 0.6 + i * 0.5) * 6;
+      ctx.strokeStyle = `rgba(180, 230, 255, ${0.1 + (Math.sin(phase) * 0.5 + 0.5) * 0.18})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(cx + ox, cy + oy, rx, ry, Math.sin(phase) * 0.15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Specular sparkles
+    for (let i = 0; i < 8; i++) {
+      const a = t * 1.4 + i * 0.9;
+      const px = cx + Math.cos(a) * (pond.w * 0.22) + Math.sin(a * 2.1) * 18;
+      const py = cy + Math.sin(a * 0.85) * (pond.h * 0.18);
+      const flash = 0.25 + (Math.sin(t * 5 + i) * 0.5 + 0.5) * 0.55;
+      ctx.fillStyle = `rgba(255, 255, 255, ${flash * 0.55})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.5 + (i % 3) * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawParticles(ctx: CanvasRenderingContext2D): void {
+    for (const p of this.particles) {
+      const a = Math.max(0, p.life / p.maxLife);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * (0.6 + a * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawWanderers(ctx: CanvasRenderingContext2D): void {
+    for (const a of this.wanderers) {
+      const bounce = Math.sin(a.bob) * 2;
+      if (a.kind === 'sheep') {
+        this.drawSheep(ctx, a.x, a.y + bounce, a.angle);
+        continue;
+      }
+      if (!this.cowImg) {
+        // Tiny fallback cow blob
+        ctx.fillStyle = '#f5f5f5';
+        ctx.beginPath();
+        ctx.ellipse(a.x, a.y + bounce, 22, 14, a.angle, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#212121';
+        ctx.beginPath();
+        ctx.ellipse(a.x - 6, a.y + bounce - 2, 6, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      const size = COW_DRAW * 0.92;
+      ctx.save();
+      ctx.globalAlpha = 0.96;
+      ctx.translate(a.x, a.y + bounce);
+      ctx.rotate(a.angle + Math.PI / 2);
+      ctx.drawImage(this.cowImg, -size / 2, -size / 2, size, size * 1.15);
+      ctx.restore();
     }
   }
 
@@ -1570,38 +1777,109 @@ export class FarmGame {
   private drawForest(ctx: CanvasRenderingContext2D): void {
     const forest = this.zones.find((z) => z.id === 'forest');
     if (!forest) return;
-    ctx.fillStyle = 'rgba(30, 70, 35, 0.12)';
+    ctx.fillStyle = 'rgba(30, 70, 35, 0.08)';
     ctx.fillRect(forest.x, forest.y, forest.w, forest.h);
     for (const t of this.trees) {
       if (!t.felled) {
-        // Trunk
-        ctx.fillStyle = '#5d4037';
-        ctx.fillRect(t.x - 5, t.y - 8, 10, 22);
-        // Canopy
+        // Soft canopy marker over painted forest (interactive target)
+        ctx.fillStyle = 'rgba(20, 60, 30, 0.18)';
+        ctx.beginPath();
+        ctx.ellipse(t.x + 4, t.y + 10, t.r * 0.9, t.r * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#4e342e';
+        ctx.fillRect(t.x - 6, t.y - 6, 12, 26);
+        ctx.fillStyle = '#1b5e20';
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y - t.r - 18);
+        ctx.lineTo(t.x + t.r * 0.85, t.y + 4);
+        ctx.lineTo(t.x - t.r * 0.85, t.y + 4);
+        ctx.closePath();
+        ctx.fill();
         ctx.fillStyle = '#2e7d32';
         ctx.beginPath();
-        ctx.arc(t.x, t.y - 22, t.r, 0, Math.PI * 2);
+        ctx.moveTo(t.x, t.y - t.r - 4);
+        ctx.lineTo(t.x + t.r * 0.65, t.y + 2);
+        ctx.lineTo(t.x - t.r * 0.65, t.y + 2);
+        ctx.closePath();
         ctx.fill();
         ctx.fillStyle = '#66bb6a';
         ctx.beginPath();
-        ctx.arc(t.x - 6, t.y - 26, t.r * 0.55, 0, Math.PI * 2);
+        ctx.moveTo(t.x - 4, t.y - t.r * 0.55);
+        ctx.lineTo(t.x + t.r * 0.35, t.y - 4);
+        ctx.lineTo(t.x - t.r * 0.25, t.y - 2);
+        ctx.closePath();
         ctx.fill();
       } else {
-        // Stump
-        ctx.fillStyle = '#6d4c41';
+        // Cleared canopy disc so the map looks changed
+        ctx.fillStyle = 'rgba(90, 70, 40, 0.28)';
         ctx.beginPath();
-        ctx.ellipse(t.x, t.y + 4, 10, 5, 0, 0, Math.PI * 2);
+        ctx.ellipse(t.x, t.y + 2, t.r * 1.05, t.r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Stump with rings
+        ctx.fillStyle = '#5d4037';
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + 6, 14, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#a1887f';
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + 4, 11, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#6d4c41';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + 4, 7, 3.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + 4, 3.5, 1.8, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        // Side bark of stump
+        ctx.fillStyle = '#4e342e';
+        ctx.beginPath();
+        ctx.ellipse(t.x, t.y + 10, 14, 4, 0, 0, Math.PI);
         ctx.fill();
         if (t.logOnGround) {
+          // Fallen trunk — long bark cylinder + cut face
+          const lx = t.x + 38;
+          const ly = t.y + 16;
+          ctx.fillStyle = 'rgba(30, 20, 10, 0.25)';
+          ctx.beginPath();
+          ctx.ellipse(lx + 4, ly + 8, 40, 10, -0.25, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#6d4c41';
+          ctx.beginPath();
+          ctx.ellipse(lx, ly, 40, 11, -0.25, 0, Math.PI * 2);
+          ctx.fill();
           ctx.fillStyle = '#8d6e63';
           ctx.beginPath();
-          ctx.ellipse(t.x + 18, t.y + 8, 22, 7, -0.2, 0, Math.PI * 2);
+          ctx.ellipse(lx - 2, ly - 2, 34, 8, -0.25, 0, Math.PI * 2);
           ctx.fill();
+          // bark ridges
           ctx.strokeStyle = '#5d4037';
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 1.4;
+          for (let i = -2; i <= 2; i++) {
+            ctx.beginPath();
+            ctx.ellipse(lx + i * 10, ly - 1, 6, 7, -0.25, -0.4, 0.4);
+            ctx.stroke();
+          }
+          // cut face (lighter wood)
+          ctx.fillStyle = '#d7ccc8';
           ctx.beginPath();
-          ctx.ellipse(t.x + 18, t.y + 8, 22, 7, -0.2, 0, Math.PI * 2);
+          ctx.ellipse(lx - 36, ly + 8, 7, 9, -0.15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#8d6e63';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.ellipse(lx - 36, ly + 8, 4, 5, -0.15, 0, Math.PI * 2);
           ctx.stroke();
+          // leftover needles tuft
+          ctx.fillStyle = '#2e7d32';
+          ctx.beginPath();
+          ctx.ellipse(lx + 28, ly - 8, 14, 8, -0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#66bb6a';
+          ctx.beginPath();
+          ctx.ellipse(lx + 32, ly - 10, 8, 5, -0.3, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
     }
@@ -1610,15 +1888,15 @@ export class FarmGame {
   private drawWashBay(ctx: CanvasRenderingContext2D): void {
     const bay = this.zones.find((z) => z.id === 'washBay');
     if (!bay) return;
-    ctx.fillStyle = 'rgba(80, 100, 120, 0.22)';
+    ctx.fillStyle = 'rgba(80, 100, 120, 0.1)';
     ctx.fillRect(bay.x, bay.y, bay.w, bay.h);
-    ctx.strokeStyle = 'rgba(180, 220, 255, 0.45)';
+    ctx.strokeStyle = 'rgba(180, 220, 255, 0.35)';
     ctx.lineWidth = 4;
     ctx.strokeRect(bay.x + 4, bay.y + 4, bay.w - 8, bay.h - 8);
     // Soap bubbles / water
     const cx = bay.x + bay.w / 2;
     const cy = bay.y + bay.h / 2;
-    ctx.fillStyle = 'rgba(100, 180, 255, 0.35)';
+    ctx.fillStyle = 'rgba(100, 180, 255, 0.18)';
     ctx.fillRect(bay.x + 20, bay.y + 40, bay.w - 40, 40);
     for (let i = 0; i < 6; i++) {
       const bx = cx - 50 + i * 20;
@@ -1639,15 +1917,13 @@ export class FarmGame {
     const barn = this.zones.find((z) => z.id === 'openBarn');
     if (!barn) return;
     // Roof shadow / open shed
-    ctx.fillStyle = 'rgba(90, 70, 50, 0.12)';
+    ctx.fillStyle = 'rgba(90, 70, 50, 0.06)';
     ctx.fillRect(barn.x, barn.y, barn.w, barn.h);
-    ctx.fillStyle = 'rgba(160, 120, 70, 0.22)';
-    ctx.fillRect(barn.x, barn.y, barn.w, 24);
     // Alley
-    ctx.fillStyle = 'rgba(180, 160, 110, 0.18)';
+    ctx.fillStyle = 'rgba(180, 160, 110, 0.1)';
     ctx.fillRect(barn.x + barn.w * 0.32, barn.y + 28, barn.w * 0.36, barn.h - 36);
     // Side stalls (4 per side for govedo + ovce)
-    ctx.strokeStyle = 'rgba(80, 55, 35, 0.55)';
+    ctx.strokeStyle = 'rgba(80, 55, 35, 0.28)';
     ctx.lineWidth = 3;
     for (let i = 0; i < 4; i++) {
       const yy = barn.y + 34 + i * ((barn.h - 48) / 4);
@@ -2663,51 +2939,74 @@ export class FarmGame {
       ctx.moveTo(0, 0);
       ctx.lineTo(0, -16);
       ctx.stroke();
-      ctx.fillStyle = "#c62828";
-      roundRectPath(ctx, -22, -42, 44, 16, 3);
+      // Soft body shadow
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.beginPath();
+      ctx.ellipse(0, -28, 26, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const beam = ctx.createLinearGradient(-24, -50, 24, -30);
+      beam.addColorStop(0, "#8e0000");
+      beam.addColorStop(0.45, "#e53935");
+      beam.addColorStop(1, "#b71c1c");
+      ctx.fillStyle = beam;
+      roundRectPath(ctx, -24, -46, 48, 20, 4);
+      ctx.fill();
+      ctx.fillStyle = "#ff8a80";
+      roundRectPath(ctx, -20, -44, 18, 6, 2);
       ctx.fill();
       ctx.fillStyle = "#fdd835";
       roundRectPath(ctx, -20, -40, 40, 5, 2);
       ctx.fill();
       for (const x of [-16, -5, 5, 16]) {
-        ctx.fillStyle = "#cfd8dc";
+        const share = ctx.createLinearGradient(x - 8, -62, x + 8, -40);
+        share.addColorStop(0, "#eceff1");
+        share.addColorStop(1, "#90a4ae");
+        ctx.fillStyle = share;
         ctx.beginPath();
         ctx.moveTo(x - 2, -40);
-        ctx.quadraticCurveTo(x - 12, -54, x + 2, -62);
-        ctx.quadraticCurveTo(x + 10, -50, x + 3, -40);
+        ctx.quadraticCurveTo(x - 14, -54, x + 2, -64);
+        ctx.quadraticCurveTo(x + 12, -50, x + 3, -40);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = "#eceff1";
-        ctx.beginPath();
-        ctx.moveTo(x, -42);
-        ctx.quadraticCurveTo(x - 5, -52, x + 1, -58);
-        ctx.quadraticCurveTo(x + 4, -50, x, -42);
-        ctx.fill();
+        ctx.strokeStyle = "#546e7a";
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
-      wheel(-10, -22, 6);
-      wheel(10, -22, 6);
+      wheel(-12, -20, 6.5);
+      wheel(12, -20, 6.5);
       return;
     }
     if (id === "balirka") {
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.beginPath();
+      ctx.ellipse(0, -18, 28, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "#1b5e20";
-      roundRectPath(ctx, -22, -10, 44, 12, 3);
+      roundRectPath(ctx, -24, -12, 48, 14, 3);
+      ctx.fill();
+      ctx.fillStyle = "#43a047";
+      roundRectPath(ctx, -22, -10, 20, 5, 2);
       ctx.fill();
       for (let i = -3; i <= 3; i++) {
-        ctx.strokeStyle = "#66bb6a";
-        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = "#81c784";
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.moveTo(i * 5.5, -6);
-        ctx.lineTo(i * 5.5 + 2, 4);
+        ctx.lineTo(i * 5.5 + 2, 5);
         ctx.stroke();
       }
-      ctx.fillStyle = "#2e7d32";
+      const chamber = ctx.createRadialGradient(-6, -34, 4, 0, -30, 26);
+      chamber.addColorStop(0, "#66bb6a");
+      chamber.addColorStop(0.55, "#2e7d32");
+      chamber.addColorStop(1, "#1b5e20");
+      ctx.fillStyle = chamber;
       ctx.beginPath();
-      ctx.ellipse(0, -30, 24, 22, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, -30, 26, 24, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = "#f9a825";
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.2;
       ctx.beginPath();
-      ctx.ellipse(0, -30, 16, 14, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, -30, 17, 15, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.strokeStyle = "#fdd835";
       ctx.lineWidth = 2;
@@ -2715,50 +3014,61 @@ export class FarmGame {
       ctx.ellipse(0, -30, 10, 8, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fillStyle = "#fdd835";
-      roundRectPath(ctx, -12, -52, 24, 5, 2);
+      roundRectPath(ctx, -14, -54, 28, 6, 2);
       ctx.fill();
       ctx.fillStyle = "#1b5e20";
-      roundRectPath(ctx, -26, -40, 8, 16, 2);
+      roundRectPath(ctx, -28, -42, 9, 18, 2);
       ctx.fill();
-      wheel(-16, 4, 7.5);
-      wheel(16, 4, 7.5);
+      wheel(-16, 5, 8);
+      wheel(16, 5, 8);
       return;
     }
     if (id === "ovijalka") {
-      ctx.fillStyle = "#2e7d32";
-      roundRectPath(ctx, -24, -44, 48, 28, 6);
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.beginPath();
+      ctx.ellipse(0, -20, 28, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const frame = ctx.createLinearGradient(-26, -48, 26, -12);
+      frame.addColorStop(0, "#43a047");
+      frame.addColorStop(0.5, "#2e7d32");
+      frame.addColorStop(1, "#1b5e20");
+      ctx.fillStyle = frame;
+      roundRectPath(ctx, -26, -48, 52, 32, 7);
       ctx.fill();
       ctx.fillStyle = "#fdd835";
-      roundRectPath(ctx, -22, -42, 44, 6, 2);
+      roundRectPath(ctx, -22, -45, 44, 7, 2);
       ctx.fill();
-      ctx.fillStyle = "#43a047";
+      ctx.fillStyle = "#66bb6a";
       ctx.beginPath();
       ctx.ellipse(0, -28, 18, 12, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "#a5d6a7";
+      ctx.strokeStyle = "#c8e6c9";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.ellipse(0, -28, 14, 9, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.fillStyle = "#1b5e20";
       ctx.beginPath();
-      ctx.arc(22, -38, 9, 0, Math.PI * 2);
+      ctx.arc(22, -40, 10, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#81c784";
+      ctx.fillStyle = "#a5d6a7";
       ctx.beginPath();
-      ctx.arc(22, -38, 5, 0, Math.PI * 2);
+      ctx.arc(22, -40, 5.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "#a5d6a7";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#c8e6c9";
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(14, -34);
-      ctx.quadraticCurveTo(4, -22, 8, -14);
+      ctx.moveTo(14, -36);
+      ctx.quadraticCurveTo(2, -20, 8, -12);
       ctx.stroke();
       ctx.fillStyle = "#c62828";
-      roundRectPath(ctx, -20, -12, 40, 7, 2);
+      roundRectPath(ctx, -20, -12, 40, 8, 2);
       ctx.fill();
-      wheel(-14, 2, 6.5);
-      wheel(14, 2, 6.5);
+      ctx.fillStyle = "#ef9a9a";
+      roundRectPath(ctx, -16, -10, 14, 3, 1);
+      ctx.fill();
+      wheel(-14, 3, 7);
+      wheel(14, 3, 7);
       return;
     }
     ctx.fillStyle = "#78909c";
