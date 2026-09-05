@@ -159,7 +159,7 @@ function chromaKeyGreen(img: HTMLImageElement): HTMLCanvasElement {
   return c;
 }
 
-/** Chroma-key near-black background (for Deutz green tractor on black). */
+/** Chroma-key near-black studio backdrop via edge flood (keeps dark tires). */
 function chromaKeyBlack(img: HTMLImageElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = img.naturalWidth || img.width;
@@ -168,18 +168,50 @@ function chromaKeyBlack(img: HTMLImageElement): HTMLCanvasElement {
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, c.width, c.height);
   const d = imageData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i];
-    const g = d[i + 1];
-    const b = d[i + 2];
-    const a = d[i + 3];
-    if (a < 8) continue;
+  const w = c.width;
+  const h = c.height;
+  const n = w * h;
+  const isBg = (i: number) => {
+    const o = i * 4;
+    const a = d[o + 3];
+    if (a < 8) return true;
+    const r = d[o];
+    const g = d[o + 1];
+    const b = d[o + 2];
     const maxc = Math.max(r, g, b);
     const mean = (r + g + b) / 3;
-    // Pure / near-black studio backdrop
-    if (maxc < 28 || (mean < 22 && maxc < 40)) {
-      d[i + 3] = 0;
-    }
+    // Studio black only — tires (~25–55) stay if not flood-connected from edge
+    return maxc < 22 || (mean < 16 && maxc < 32);
+  };
+  const seen = new Uint8Array(n);
+  const q = new Int32Array(n);
+  let qs = 0;
+  let qe = 0;
+  const push = (i: number) => {
+    if (i < 0 || i >= n || seen[i]) return;
+    if (!isBg(i)) return;
+    seen[i] = 1;
+    q[qe++] = i;
+  };
+  for (let x = 0; x < w; x++) {
+    push(x);
+    push((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    push(y * w);
+    push(y * w + (w - 1));
+  }
+  while (qs < qe) {
+    const i = q[qs++];
+    const x = i % w;
+    const y = (i / w) | 0;
+    if (x > 0) push(i - 1);
+    if (x + 1 < w) push(i + 1);
+    if (y > 0) push(i - w);
+    if (y + 1 < h) push(i + w);
+  }
+  for (let i = 0; i < n; i++) {
+    if (seen[i]) d[i * 4 + 3] = 0;
   }
   ctx.putImageData(imageData, 0, 0);
   return c;
@@ -214,19 +246,21 @@ export class FarmGame {
     ImplementId,
     { rot: number; offsetY: number; offsetX?: number; scale: number }
   > = {
-    plug: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    balirka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    kombajn: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    krtaca: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    vitla: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
-    silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.15 },
+    // offsetY nudges body along hitch axis (+ toward tractor). Keep small so
+    // tongue stays short and wheels sit near ground behind the pin.
+    plug: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.0 },
+    balirka: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.05 },
+    ovijalka: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
+    sejalnik: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
+    kosilnica: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 1.08 },
+    zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.02 },
+    gnojnica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.12 },
+    kombajn: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 0.92 },
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.1, scale: 1.15 },
+    krmilnik: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
+    krtaca: { rot: 0, offsetX: 0, offsetY: 0.03, scale: 1.0 },
+    vitla: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.05 },
+    silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.05 },
   };
 
   private ready = false;
@@ -2498,16 +2532,16 @@ export class FarmGame {
     const { x, y, angle } = this.tractor;
     const size = TRACTOR_DRAW;
     const bounce = this.moving ? Math.sin(this.bouncePhase) * 1.6 : 0;
-    // Hitch pin always on centerline, fixed behind tractor.
-    const rear = -size * 0.55;
+    // Hitch pin on centerline, short gap behind rear axle.
+    const rear = -size * 0.42;
 
-    // Soft shadow under only.
+    // Soft ground shadow under chassis only (no body-covering blob).
     ctx.save();
-    ctx.translate(x, y + 8);
+    ctx.translate(x, y + 10);
     ctx.rotate(angle - Math.PI / 2);
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.28)';
+    ctx.fillStyle = 'rgba(20, 30, 20, 0.22)';
     ctx.beginPath();
-    ctx.ellipse(0, 4, size * 0.38, size * 0.13, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 2, size * 0.34, size * 0.11, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -2516,44 +2550,65 @@ export class FarmGame {
     // Travel angle → local +Y forward.
     ctx.rotate(angle - Math.PI / 2);
 
-    // Hitch behind on local −Y (centered).
+    // Hitch behind on local −Y (centered); drawn under tractor body.
     this.drawImplement(ctx, size, rear);
 
     if (this.tractorImg) {
       ctx.save();
-      // Iso hood → local +Y forward (simplest fixed base rot; no art nudge).
+      // Iso / three-quarter hood → local +Y forward.
       const spriteBaseRot = Math.PI / 2;
       ctx.rotate(spriteBaseRot);
       const iw = this.tractorImg.width || size;
       const ih = this.tractorImg.height || size;
       const aspect = iw / Math.max(1, ih);
-      const drawH = size * 1.05;
-      const drawW = drawH * Math.min(1.35, Math.max(1.05, aspect));
+      const drawH = size * 1.02;
+      const drawW = drawH * Math.min(1.28, Math.max(1.0, aspect));
       ctx.drawImage(this.tractorImg, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
     } else {
-      // Fallback Deutz-ish green body (iso-ish block)
-      ctx.fillStyle = '#3f8f3a';
-      ctx.fillRect(-28, -36, 56, 72);
-      ctx.fillStyle = '#2a6628';
-      ctx.fillRect(-28, -36, 10, 72);
+      // Fallback clear Deutz green (no covering blob).
+      const green = '#3f8f3a';
+      const dark = '#2a6628';
+      ctx.fillStyle = green;
+      roundRectPath(ctx, -26, -40, 52, 78, 8);
+      ctx.fill();
+      ctx.fillStyle = dark;
+      roundRectPath(ctx, -26, -40, 10, 78, 4);
+      ctx.fill();
+      ctx.fillStyle = '#f5f5f5';
+      roundRectPath(ctx, -18, -6, 36, 10, 3);
+      ctx.fill();
       ctx.fillStyle = '#263238';
-      ctx.fillRect(-20, -8, 40, 36);
+      roundRectPath(ctx, -20, -2, 40, 34, 5);
+      ctx.fill();
+      ctx.fillStyle = '#81d4fa';
+      roundRectPath(ctx, -16, 4, 32, 18, 3);
+      ctx.fill();
+      // wheels hint
+      ctx.fillStyle = '#212121';
+      ctx.beginPath();
+      ctx.ellipse(-28, 18, 10, 14, 0, 0, Math.PI * 2);
+      ctx.ellipse(28, 18, 10, 14, 0, 0, Math.PI * 2);
+      ctx.ellipse(-24, -22, 7, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(24, -22, 7, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
 
-    // Dirt: subtle mud only near wheels / lower chassis — never cabin/hood
+    // Dirt: subtle mud ONLY near wheels (α ≤ 0.12) — never cabin/hood blob.
     if (this.tractorDirt > 0.02) {
-      const a = Math.min(0.12, 0.035 + this.tractorDirt * 0.085);
+      const a = Math.min(0.12, 0.03 + this.tractorDirt * 0.08);
       ctx.save();
       ctx.globalAlpha = a;
       ctx.fillStyle = '#5d4037';
       ctx.beginPath();
-      // rear/side wheel mud (local −Y is hitch/rear; stay low on chassis)
-      ctx.ellipse(-size * 0.26, size * 0.22, 10, 5.5, 0.25, 0, Math.PI * 2);
-      ctx.ellipse(size * 0.26, size * 0.22, 10, 5.5, -0.25, 0, Math.PI * 2);
-      ctx.ellipse(-size * 0.2, size * 0.32, 8, 4.5, 0.1, 0, Math.PI * 2);
-      ctx.ellipse(size * 0.2, size * 0.32, 8, 4.5, -0.1, 0, Math.PI * 2);
-      ctx.ellipse(0, size * 0.3, 12, 4, 0, 0, Math.PI * 2);
+      // rear wheels (local −Y = hitch/rear)
+      ctx.ellipse(-size * 0.28, -size * 0.16, 9, 5, 0.2, 0, Math.PI * 2);
+      ctx.ellipse(size * 0.28, -size * 0.16, 9, 5, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(-size * 0.22, -size * 0.26, 7, 4, 0.1, 0, Math.PI * 2);
+      ctx.ellipse(size * 0.22, -size * 0.26, 7, 4, -0.1, 0, Math.PI * 2);
+      // front wheels (local +Y)
+      ctx.ellipse(-size * 0.2, size * 0.28, 6.5, 3.8, 0.15, 0, Math.PI * 2);
+      ctx.ellipse(size * 0.2, size * 0.28, 6.5, 3.8, -0.15, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -2562,62 +2617,61 @@ export class FarmGame {
   }
 
   /** Hitch implement behind tractor (local −Y, pin at rear). */
-  private drawImplement(ctx: CanvasRenderingContext2D, size: number, rear = -size * 0.55): void {
+  private drawImplement(ctx: CanvasRenderingContext2D, size: number, rear = -size * 0.42): void {
     const id = this.selectedImplement;
     const tune = this.hitchTune[id];
 
     ctx.save();
     ctx.globalAlpha = 0.98;
 
-    // Soft shadow under implement only.
+    // Soft shadow under implement only (ground contact).
     ctx.save();
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.18)';
+    ctx.fillStyle = 'rgba(20, 30, 20, 0.16)';
     const shadowLen =
       id === 'kombajn'
-        ? size * 1.1
+        ? size * 1.0
         : id === 'prikolica' || id === 'gnojnica'
-          ? size * 0.7
-          : size * 0.45;
+          ? size * 0.65
+          : size * 0.4;
+    const shadowW =
+      id === 'kosilnica' || id === 'kombajn' ? size * 0.32 : size * 0.24;
     ctx.beginPath();
-    ctx.ellipse(0, rear - shadowLen * 0.35, size * 0.26, size * 0.09, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, rear - shadowLen * 0.4, shadowW, size * 0.08, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Clean centerline hitch tongue (drawn under tractor body)
+    // Short centerline tongue from rear axle to hitch pin
     ctx.strokeStyle = '#455a64';
-    ctx.lineWidth = 3.2;
+    ctx.lineWidth = 3;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, -size * 0.06);
+    ctx.moveTo(0, -size * 0.02);
     ctx.lineTo(0, rear);
     ctx.stroke();
-    // subtle highlight on tongue
-    ctx.strokeStyle = 'rgba(176, 190, 197, 0.55)';
-    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(176, 190, 197, 0.5)';
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
-    ctx.moveTo(-1.2, -size * 0.05);
-    ctx.lineTo(-1.2, rear + 1);
+    ctx.moveTo(-1.1, -size * 0.015);
+    ctx.lineTo(-1.1, rear + 1);
     ctx.stroke();
-    // Hitch pin
+    // Hitch pin on centerline
     ctx.fillStyle = '#78909c';
     ctx.beginPath();
-    ctx.arc(0, rear, 3.2, 0, Math.PI * 2);
+    ctx.arc(0, rear, 3.0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#37474f';
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.15;
     ctx.beginPath();
-    ctx.arc(0, rear, 3.2, 0, Math.PI * 2);
+    ctx.arc(0, rear, 3.0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = '#cfd8dc';
     ctx.beginPath();
-    ctx.arc(0, rear, 1.3, 0, Math.PI * 2);
+    ctx.arc(0, rear, 1.2, 0, Math.PI * 2);
     ctx.fill();
 
-    // All implement drawing is relative to hitch pin on centerline
+    // Implement relative to hitch pin; canvas fallbacks (hitch at +Y, body −Y)
     ctx.translate(0, rear);
 
-    // Prefer canvas fallbacks (authored hitch at +Y). Skip PNG eye-math.
-    // Toolbar still uses chroma-keyed PNGs separately.
     const s = tune.scale;
     const longAxis = size * s;
     ctx.rotate(tune.rot);
@@ -2634,31 +2688,32 @@ export class FarmGame {
    * Drawn at ~unit size; hitchTune.scale applied by caller.
    */
   private drawFallbackImplement(ctx: CanvasRenderingContext2D, id: ImplementId): void {
+    // Short A-frame at hitch pin (toward tractor = +Y, body = −Y)
     ctx.strokeStyle = "#37474f";
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 3.2;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(0, 8);
-    ctx.lineTo(0, -8);
+    ctx.moveTo(0, 6);
+    ctx.lineTo(0, -6);
     ctx.stroke();
     ctx.fillStyle = "#607d8b";
     ctx.beginPath();
-    ctx.moveTo(0, 2);
-    ctx.lineTo(-9, -10);
-    ctx.lineTo(9, -10);
+    ctx.moveTo(0, 3);
+    ctx.lineTo(-8, -8);
+    ctx.lineTo(8, -8);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "#b0bec5";
     ctx.beginPath();
-    ctx.arc(0, 5, 3.2, 0, Math.PI * 2);
+    ctx.arc(0, 4, 2.8, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#546e7a";
-    ctx.lineWidth = 2.2;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-8, 2);
-    ctx.lineTo(-5, -10);
-    ctx.moveTo(8, 2);
-    ctx.lineTo(5, -10);
+    ctx.moveTo(-7, 2);
+    ctx.lineTo(-4, -8);
+    ctx.moveTo(7, 2);
+    ctx.lineTo(4, -8);
     ctx.stroke();
 
     const wheel = (x: number, y: number, r: number) => {
@@ -2757,8 +2812,8 @@ export class FarmGame {
         ctx.arc(x, 12, 1.8, 0, Math.PI * 2);
         ctx.fill();
       }
-      wheel(-20, 0, 6.5);
-      wheel(20, 0, 6.5);
+      wheel(-20, -2, 6.5);
+      wheel(20, -2, 6.5);
       return;
     }
     if (id === "kosilnica") {
@@ -2804,8 +2859,8 @@ export class FarmGame {
       ctx.fill();
       roundRectPath(ctx, 26, 2, 12, 4, 2);
       ctx.fill();
-      wheel(-22, 8, 5.5);
-      wheel(22, 8, 5.5);
+      wheel(-22, -4, 5.5);
+      wheel(22, -4, 5.5);
       return;
     }
     if (id === "zgrabljalnik") {
@@ -2846,8 +2901,8 @@ export class FarmGame {
       ctx.beginPath();
       ctx.arc(0, -2, 5, 0, Math.PI * 2);
       ctx.fill();
-      wheel(-12, 10, 5.5);
-      wheel(12, 10, 5.5);
+      wheel(-12, 2, 5.5);
+      wheel(12, 2, 5.5);
       return;
     }
     if (id === "krtaca") {
@@ -2873,8 +2928,8 @@ export class FarmGame {
         ctx.arc(bx - br * 0.3, by - br * 0.3, br * 0.28, 0, Math.PI * 2);
         ctx.fill();
       }
-      wheel(-14, 6, 5);
-      wheel(14, 6, 5);
+      wheel(-14, 0, 5);
+      wheel(14, 0, 5);
       return;
     }
     if (id === "silazer") {
@@ -3200,8 +3255,8 @@ export class FarmGame {
       ctx.fillStyle = "#1b5e20";
       roundRectPath(ctx, -28, -42, 9, 18, 2);
       ctx.fill();
-      wheel(-16, 5, 8);
-      wheel(16, 5, 8);
+      wheel(-16, -2, 8);
+      wheel(16, -2, 8);
       return;
     }
     if (id === "ovijalka") {
@@ -3248,8 +3303,8 @@ export class FarmGame {
       ctx.fillStyle = "#ef9a9a";
       roundRectPath(ctx, -16, -10, 14, 3, 1);
       ctx.fill();
-      wheel(-14, 3, 7);
-      wheel(14, 3, 7);
+      wheel(-14, -2, 7);
+      wheel(14, -2, 7);
       return;
     }
     ctx.fillStyle = "#78909c";
