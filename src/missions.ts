@@ -48,6 +48,12 @@ export interface Mission {
    * Secondary zones may be used mid-mission in game logic.
    */
   markerZone: string;
+  /**
+   * If true, driving near the ! does NOT auto-accept.
+   * Player must tap the ! or pick the mission from the menu
+   * (used for night/sheep so the dark overlay is never a surprise).
+   */
+  manualAccept?: boolean;
 }
 
 export const IMPLEMENTS: {
@@ -225,6 +231,7 @@ export const MISSIONS: Mission[] = [
     title: 'Nočna vožnja',
     success: 'Našli ste vsa izgubljena jagnjeta!',
     markerZone: 'nightPaddock',
+    manualAccept: true,
     phases: [
       {
         implement: 'prikolica',
@@ -237,6 +244,7 @@ export const MISSIONS: Mission[] = [
     title: 'Najdi 3 ovce',
     success: 'Našli ste vse tri ovce!',
     markerZone: 'nightPaddock',
+    manualAccept: true,
     phases: [
       {
         implement: null,

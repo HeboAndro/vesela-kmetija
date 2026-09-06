@@ -140,6 +140,13 @@ const TRACTOR_SPEED = 220;
 /** How much of the map height a phone should see (~55–70%). */
 const VIEW_FRAC = 0.62;
 const CAM_LERP = 5.5;
+/**
+ * Tall phones (e.g. Galaxy S24+ ~19.5:9) get letterboxed so the play
+ * canvas is not a full stretched column. Cap height/width of the play area.
+ */
+const MAX_PLAY_ASPECT = 1.72; // ≈16:9.3 portrait — tablets/landscape unchanged
+/** Soft night veil peak alpha (was ~0.9 hard blackout). */
+const NIGHT_VEIL_ALPHA = 0.62;
 
 type TractorId = 'deutz' | 'goldoni' | 'utb' | 'torpedo';
 
@@ -496,6 +503,10 @@ export class FarmGame {
   private completedIds = new Set<MissionId>();
   /** Auto-accept cooldown so we don't spam toasts. */
   private questAcceptCd = 0;
+  /** Soft proximity hint cooldown for manual-accept quests (night/sheep). */
+  private questHintCd = 0;
+  /** 0→1 fade for night overlay so darkness is not an instant blackout. */
+  private nightVeil = 0;
   /** Fill_cistern phase 1 progress 0..1 */
   private cisternFill = 0;
   /** Daytime sheep hunt targets. */
@@ -597,6 +608,8 @@ export class FarmGame {
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    window.visualViewport?.addEventListener('resize', () => this.resize());
+    window.visualViewport?.addEventListener('scroll', () => this.resize());
     void this.loadAssets();
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -1538,33 +1551,67 @@ export class FarmGame {
   }
 
   private resize(): void {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const vv = window.visualViewport;
+    const layoutW = window.innerWidth;
+    const layoutH = window.innerHeight;
+    // Prefer visualViewport so mobile browser chrome doesn't inflate height.
+    const availW = Math.max(1, Math.floor(vv?.width ?? layoutW));
+    const availH = Math.max(1, Math.floor(vv?.height ?? layoutH));
+
+    const cs = getComputedStyle(document.documentElement);
+    const safeTop = parseFloat(cs.getPropertyValue('--sat')) || 0;
+    const safeBottom = parseFloat(cs.getPropertyValue('--sab')) || 0;
+    const safeLeft = parseFloat(cs.getPropertyValue('--sal')) || 0;
+    const safeRight = parseFloat(cs.getPropertyValue('--sar')) || 0;
+
+    const padX = Math.max(0, safeLeft) + Math.max(0, safeRight);
+    const padY = Math.max(0, safeTop) + Math.max(0, safeBottom);
+    let playW = Math.max(1, availW - padX);
+    let playH = Math.max(1, availH - padY);
+
+    // Tall narrow phones: letterbox vertically so the game isn't a stretched column.
+    const portraitPhone = playW < 900 && playH / playW > MAX_PLAY_ASPECT;
+    if (portraitPhone) {
+      playH = Math.floor(playW * MAX_PLAY_ASPECT);
+    }
+
+    // Position inside #app (not visualViewport offset — HUD is app-relative).
+    const offsetX = Math.floor(safeLeft + (availW - padX - playW) / 2);
+    const offsetY = Math.floor(safeTop + (availH - padY - playH) / 2);
+
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.cssW = w;
-    this.cssH = h;
-    this.canvas.width = Math.floor(w * dpr);
-    this.canvas.height = Math.floor(h * dpr);
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
+    this.cssW = playW;
+    this.cssH = playH;
+    this.canvas.width = Math.floor(playW * dpr);
+    this.canvas.height = Math.floor(playH * dpr);
+    this.canvas.style.width = `${playW}px`;
+    this.canvas.style.height = `${playH}px`;
+    this.canvas.style.left = `${offsetX}px`;
+    this.canvas.style.top = `${offsetY}px`;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Zoom so viewport shows a fraction of the world (map larger than screen).
-    const scaleH = h / (MAP_H * VIEW_FRAC);
-    const scaleW = w / (MAP_W * VIEW_FRAC);
-    this.viewScale = Math.max(scaleH, scaleW);
-    // Cap so we never zoom out past "fit entire map"
-    const fit = Math.min(w / MAP_W, h / MAP_H);
+    // Contain-style zoom inside the letterboxed play area (less cramped on tall phones).
+    const scaleH = playH / (MAP_H * VIEW_FRAC);
+    const scaleW = playW / (MAP_W * VIEW_FRAC);
+    this.viewScale = Math.min(scaleH, scaleW);
+    // Never zoom out past a gentle "fit map" floor on tiny screens.
+    const fit = Math.min(playW / MAP_W, playH / MAP_H);
     this.viewScale = Math.max(this.viewScale, fit * 1.15);
 
-    const margin = Math.max(18, Math.min(w, h) * 0.04);
-    this.joy.radius = Math.max(52, Math.min(72, Math.min(w, h) * 0.11));
+    const margin = Math.max(18, Math.min(playW, playH) * 0.04);
+    const joySafeBottom = Math.max(10, safeBottom * 0.35);
+    this.joy.radius = Math.max(52, Math.min(72, Math.min(playW, playH) * 0.11));
     this.joy.baseX = margin + this.joy.radius + 8;
-    this.joy.baseY = h - margin - this.joy.radius - 12;
+    this.joy.baseY = playH - margin - this.joy.radius - 12 - joySafeBottom;
     if (!this.joy.active) {
       this.joy.knobX = this.joy.baseX;
       this.joy.knobY = this.joy.baseY;
     }
+
+    document.documentElement.style.setProperty('--play-top', `${offsetY}px`);
+    document.documentElement.style.setProperty('--play-left', `${offsetX}px`);
+    document.documentElement.style.setProperty('--play-w', `${playW}px`);
+    document.documentElement.style.setProperty('--play-h', `${playH}px`);
   }
 
   private clampCamera(cx: number, cy: number): { x: number; y: number } {
@@ -1634,6 +1681,8 @@ export class FarmGame {
             /* ignore */
           }
           setKnob(sx, sy);
+        } else if (this.tryAcceptQuestAtScreen(sx, sy)) {
+          // Accepted a ! marker (esp. night/sheep manual accept).
         } else {
           // One-finger drag on empty map nudges camera a bit
           this.pan.active = true;
@@ -1709,6 +1758,13 @@ export class FarmGame {
     if (this.washSfxCd > 0) this.washSfxCd -= dt;
     if (this.slurrySfxCd > 0) this.slurrySfxCd -= dt;
     if (this.questAcceptCd > 0) this.questAcceptCd -= dt;
+    if (this.questHintCd > 0) this.questHintCd -= dt;
+    // Soft night fade in/out — never slam to full black on accept.
+    const wantNight = this.ready && !this.gameDone && this.currentMission().id === 'night';
+    const nightSpeed = wantNight ? 0.55 : 1.2;
+    this.nightVeil = wantNight
+      ? Math.min(1, this.nightVeil + dt * nightSpeed)
+      : Math.max(0, this.nightVeil - dt * nightSpeed);
 
     this.updateAnimals(dt);
     this.updateWanderers(dt);
@@ -2625,10 +2681,17 @@ export class FarmGame {
     window.setTimeout(() => {
       this.celebrating = false;
       // Prefer next incomplete mission; keep free-pick friendly.
-      const nextIdx = MISSIONS.findIndex((mm, i) => i > this.missionIndex && !this.completedIds.has(mm.id));
-      const fallback = MISSIONS.findIndex((mm) => !this.completedIds.has(mm.id));
-      const pick = nextIdx >= 0 ? nextIdx : fallback;
+      // Skip manualAccept (night/sheep) when other quests remain so finishing
+      // near the paddock does not instantly dump into night / re-loop sheep.
+      const prefer = (mm: Mission) => !mm.manualAccept || MISSIONS.every((x) => x.manualAccept || this.completedIds.has(x.id));
+      const nextIdx = MISSIONS.findIndex(
+        (mm, i) => i > this.missionIndex && !this.completedIds.has(mm.id) && prefer(mm),
+      );
+      const fallback = MISSIONS.findIndex((mm) => !this.completedIds.has(mm.id) && prefer(mm));
+      const anyLeft = MISSIONS.findIndex((mm) => !this.completedIds.has(mm.id));
+      const pick = nextIdx >= 0 ? nextIdx : fallback >= 0 ? fallback : anyLeft;
       if (pick >= 0) {
+        // Don't call jumpToMission (would clear completedIds / reset world). Soft switch.
         this.missionIndex = pick;
         this.phaseIndex = 0;
         this.missionProgress = 0;
@@ -3126,13 +3189,14 @@ export class FarmGame {
   }
 
   private drawNightOverlay(ctx: CanvasRenderingContext2D): void {
-    if (this.currentMission().id !== 'night' || this.gameDone) return;
+    if (this.gameDone || this.nightVeil <= 0.01) return;
     const ang = this.tractor.angle;
     const tx = this.tractor.x;
     const ty = this.tractor.y;
-    // Darker night veil with clear headlight cone + cabin cut out
+    const veil = Math.min(1, this.nightVeil) * NIGHT_VEIL_ALPHA;
+    // Soft night veil with clear headlight cone + cabin cut out (fades in).
     ctx.save();
-    ctx.fillStyle = 'rgba(4, 8, 22, 0.9)';
+    ctx.fillStyle = `rgba(4, 8, 22, ${veil})`;
     ctx.beginPath();
     ctx.rect(0, 0, MAP_W, MAP_H);
     // Wide outer cone hole
@@ -3157,8 +3221,9 @@ export class FarmGame {
     ctx.arc(tx, ty, 52, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip('evenodd');
+    const starFade = Math.min(1, this.nightVeil);
     for (const st of this.nightStars) {
-      const tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(this.pulse * 2.2 + st.phase));
+      const tw = (0.45 + 0.55 * (0.5 + 0.5 * Math.sin(this.pulse * 2.2 + st.phase))) * starFade;
       ctx.fillStyle = `rgba(230, 240, 255, ${tw})`;
       ctx.beginPath();
       ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
@@ -3169,6 +3234,7 @@ export class FarmGame {
     // Clear warm headlight beam (outer soft + bright core)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = Math.min(1, this.nightVeil);
     const beam = ctx.createRadialGradient(tx, ty, 8, tx, ty, 250);
     beam.addColorStop(0, 'rgba(255, 250, 210, 0.42)');
     beam.addColorStop(0.35, 'rgba(255, 230, 150, 0.22)');
@@ -3653,7 +3719,7 @@ export class FarmGame {
     return { x: z.x + z.w / 2, y: z.y + 36 };
   }
 
-  /** Approaching a yellow ! auto-accepts that location-tied mission. */
+  /** Approaching a yellow ! auto-accepts that location-tied mission (except manualAccept). */
   private updateQuestAutoAccept(): void {
     if (!this.ready || this.celebrating || this.gameDone) return;
     if (this.questAcceptCd > 0) return;
@@ -3666,12 +3732,55 @@ export class FarmGame {
       const pt = this.missionMarkerPoint(m);
       if (!pt) continue;
       const d = Math.hypot(pt.x - tx, pt.y - ty);
-      if (d < 130) {
-        this.questAcceptCd = 2.2;
-        this.jumpToMission(i);
-        return;
+      if (d >= 130) continue;
+      // Night / sheep: never hard-accept on mere proximity (avoids sudden blackout).
+      if (m.manualAccept) {
+        if (this.questHintCd <= 0) {
+          this.questHintCd = 4.5;
+          this.showToast('Tapni ! ali izberi nalogo v meniju', 1800);
+        }
+        continue;
+      }
+      this.questAcceptCd = 2.2;
+      this.jumpToMission(i);
+      return;
+    }
+  }
+
+  /** Screen (canvas CSS px) → world coordinates. */
+  private screenToWorld(sx: number, sy: number): { x: number; y: number } {
+    const camX = this.cam.x + this.camNudge.x;
+    const camY = this.cam.y + this.camNudge.y;
+    const ox = this.cssW / 2 - camX * this.viewScale;
+    const oy = this.cssH / 2 - camY * this.viewScale;
+    return {
+      x: (sx - ox) / this.viewScale,
+      y: (sy - oy) / this.viewScale,
+    };
+  }
+
+  /** Tap a yellow ! to accept (required for night/sheep; optional for others). */
+  private tryAcceptQuestAtScreen(sx: number, sy: number): boolean {
+    if (!this.ready || this.celebrating || this.gameDone) return false;
+    const world = this.screenToWorld(sx, sy);
+    let bestI = -1;
+    let bestD = 78; // world px tap radius around marker
+    for (let i = 0; i < MISSIONS.length; i++) {
+      const m = MISSIONS[i];
+      if (this.completedIds.has(m.id)) continue;
+      if (i === this.missionIndex) continue;
+      const pt = this.missionMarkerPoint(m);
+      if (!pt) continue;
+      const d = Math.hypot(pt.x - world.x, pt.y - world.y);
+      if (d < bestD) {
+        bestD = d;
+        bestI = i;
       }
     }
+    if (bestI < 0) return false;
+    this.questAcceptCd = 2.2;
+    this.jumpToMission(bestI);
+    return true;
   }
 
   /** WoW-style yellow ! (available) and ? (in progress). */

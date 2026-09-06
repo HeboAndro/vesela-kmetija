@@ -1,3 +1,10 @@
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -11,8 +18,10 @@ html,
 body {
   width: 100%;
   height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
-  background: #1a3d1f;
+  background: #122016;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -23,16 +32,23 @@ body {
   max-width: 100vw;
   max-height: 100dvh;
   overflow: hidden;
+  background: #1a3d1f;
 }
 
+/*
+ * Canvas is positioned/sized by game.ts resize() for letterboxing on tall
+ * phones (Galaxy S24+ etc.). Fallback fills the app until JS runs.
+ */
 #game {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
   width: 100%;
   height: 100%;
   display: block;
   touch-action: none;
   cursor: default;
+  background: #1a3d1f;
 }
 
 #mission-card {
@@ -673,5 +689,57 @@ body {
     right: max(0.7rem, env(safe-area-inset-right));
     bottom: max(1.2rem, env(safe-area-inset-bottom));
     transform: none;
+  }
+}
+
+
+/* —— Tall narrow phones: keep HUD usable inside letterboxed play —— */
+@media (max-width: 500px) and (max-aspect-ratio: 10/16) {
+  #mission-card {
+    top: max(0.45rem, env(safe-area-inset-top));
+    left: max(0.45rem, env(safe-area-inset-left));
+    width: min(13.2rem, calc(100vw - 4.8rem));
+    padding: 0.55rem 0.7rem 0.5rem;
+  }
+
+  #mission-title {
+    font-size: 0.95rem;
+  }
+
+  #mission-hint {
+    font-size: 0.72rem;
+  }
+
+  #tractor-bar {
+    top: max(0.45rem, calc(env(safe-area-inset-top) + 6.4rem));
+    max-width: min(10.5rem, calc(100vw - 1rem));
+    padding: 0.28rem 0.32rem 0.32rem;
+  }
+
+  .tractor-btn {
+    min-height: 2.7rem;
+  }
+
+  #implement-bar {
+    left: max(6.4rem, calc(env(safe-area-inset-left) + 6.1rem));
+    bottom: max(0.35rem, env(safe-area-inset-bottom));
+    grid-auto-rows: minmax(2.45rem, auto);
+    gap: 0.22rem;
+  }
+
+  .impl-btn {
+    min-height: 2.45rem;
+    padding: 0.2rem 0.15rem 0.16rem;
+  }
+
+  #impl-chip,
+  #action-cluster {
+    bottom: max(5.8rem, calc(env(safe-area-inset-bottom) + 5.4rem));
+  }
+
+  #garage-btn {
+    bottom: max(4.8rem, calc(env(safe-area-inset-bottom) + 4.5rem));
+    font-size: 0.92rem;
+    padding: 0.58rem 1rem;
   }
 }
