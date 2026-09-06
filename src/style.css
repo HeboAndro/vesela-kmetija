@@ -58,6 +58,37 @@ body {
   margin-bottom: 0.25rem;
 }
 
+#mission-pick-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0.15rem;
+}
+
+.mission-pick-label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+
+#mission-pick {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #1b2e1c;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid rgba(255, 213, 79, 0.85);
+  border-radius: 0.55rem;
+  padding: 0.22rem 0.35rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+
 #mission-hint {
   font-size: 0.78rem;
   line-height: 1.3;

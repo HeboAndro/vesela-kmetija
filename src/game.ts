@@ -143,6 +143,9 @@ const CAM_LERP = 5.5;
 
 type TractorId = 'deutz' | 'goldoni' | 'utb' | 'torpedo';
 
+/** How to strip studio backdrop from tractor sprites at load. */
+type TractorKeyMode = 'none' | 'soft' | 'black';
+
 interface TractorDef {
   id: TractorId;
   label: string;
@@ -150,8 +153,13 @@ interface TractorDef {
   src: string;
   /** Draw size multiplier vs TRACTOR_DRAW (Goldoni smaller, Torpedo larger). */
   scale: number;
-  /** true = studio black backdrop needs edge flood at load. */
-  chromaBlack: boolean;
+  /**
+   * Backdrop keying:
+   * - none: already-transparent PNG (e.g. green Deutz) — do not punch mid greens
+   * - soft: edge-flood only near-white / near-black (safe for green bodies)
+   * - black: classic studio-black flood (non-green implements / dark-backed art)
+   */
+  keyMode: TractorKeyMode;
 }
 
 const TRACTORS: TractorDef[] = [
@@ -161,7 +169,8 @@ const TRACTORS: TractorDef[] = [
     shortLabel: 'Deutz',
     src: './tractor-deutz.png',
     scale: 1,
-    chromaBlack: true,
+    // Already transparent green body — never run black/green chroma that eats paint.
+    keyMode: 'none',
   },
   {
     id: 'goldoni',
@@ -169,7 +178,7 @@ const TRACTORS: TractorDef[] = [
     shortLabel: 'Goldoni',
     src: './tractor-goldoni.png',
     scale: 0.86,
-    chromaBlack: false,
+    keyMode: 'none',
   },
   {
     id: 'utb',
@@ -177,7 +186,7 @@ const TRACTORS: TractorDef[] = [
     shortLabel: 'UTB 643',
     src: './tractor-utb.png',
     scale: 1.02,
-    chromaBlack: false,
+    keyMode: 'none',
   },
   {
     id: 'torpedo',
@@ -185,7 +194,7 @@ const TRACTORS: TractorDef[] = [
     shortLabel: 'Torpedo',
     src: './tractor-torpedo.png',
     scale: 1.14,
-    chromaBlack: false,
+    keyMode: 'none',
   },
 ];
 
@@ -236,7 +245,80 @@ function chromaKeyGreen(img: HTMLImageElement): HTMLCanvasElement {
   return c;
 }
 
-/** Chroma-key near-black studio backdrop via edge flood (keeps dark tires). */
+/**
+ * True for mid-green body paint (Deutz hood/fenders). Never treat as backdrop.
+ * Protects green tractors from soft/black key floods eating the chassis.
+ */
+function isMidGreenBody(r: number, g: number, b: number): boolean {
+  return g > 55 && g > r + 12 && g > b + 12;
+}
+
+/**
+ * Soft backdrop key for green tractors: edge-flood only near-white / near-black.
+ * Never removes mid greens (Deutz body paint).
+ */
+function chromaKeySoftBg(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, c.width, c.height);
+  const d = imageData.data;
+  const w = c.width;
+  const h = c.height;
+  const n = w * h;
+  const isBg = (i: number) => {
+    const o = i * 4;
+    const a = d[o + 3];
+    if (a < 8) return true;
+    const r = d[o];
+    const g = d[o + 1];
+    const b = d[o + 2];
+    if (isMidGreenBody(r, g, b)) return false;
+    const maxc = Math.max(r, g, b);
+    const minc = Math.min(r, g, b);
+    const mean = (r + g + b) / 3;
+    const nearWhite = minc > 235 && maxc > 245;
+    // Stricter than chromaKeyBlack — only pure studio black, not dark grey metal
+    const nearBlack = maxc < 14 || (mean < 10 && maxc < 20);
+    return nearWhite || nearBlack;
+  };
+  const seen = new Uint8Array(n);
+  const q = new Int32Array(n);
+  let qs = 0;
+  let qe = 0;
+  const push = (i: number) => {
+    if (i < 0 || i >= n || seen[i]) return;
+    if (!isBg(i)) return;
+    seen[i] = 1;
+    q[qe++] = i;
+  };
+  for (let x = 0; x < w; x++) {
+    push(x);
+    push((h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y++) {
+    push(y * w);
+    push(y * w + (w - 1));
+  }
+  while (qs < qe) {
+    const i = q[qs++];
+    const x = i % w;
+    const y = (i / w) | 0;
+    if (x > 0) push(i - 1);
+    if (x + 1 < w) push(i + 1);
+    if (y > 0) push(i - w);
+    if (y + 1 < h) push(i + w);
+  }
+  for (let i = 0; i < n; i++) {
+    if (seen[i]) d[i * 4 + 3] = 0;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return c;
+}
+
+/** Chroma-key near-black studio backdrop via edge flood (keeps dark tires + mid greens). */
 function chromaKeyBlack(img: HTMLImageElement): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = img.naturalWidth || img.width;
@@ -255,6 +337,7 @@ function chromaKeyBlack(img: HTMLImageElement): HTMLCanvasElement {
     const r = d[o];
     const g = d[o + 1];
     const b = d[o + 2];
+    if (isMidGreenBody(r, g, b)) return false;
     const maxc = Math.max(r, g, b);
     const mean = (r + g + b) / 3;
     // Studio black only — tires (~25–55) stay if not flood-connected from edge
@@ -298,6 +381,7 @@ export class FarmGame {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private missionTitleEl: HTMLElement;
+  private missionPickEl: HTMLSelectElement;
   private missionHintEl: HTMLElement;
   private progressFill: HTMLElement;
   private starsCountEl: HTMLElement;
@@ -437,6 +521,7 @@ export class FarmGame {
     this.ctx = ctx;
 
     this.missionTitleEl = document.getElementById('mission-title')!;
+    this.missionPickEl = document.getElementById('mission-pick') as HTMLSelectElement;
     this.missionHintEl = document.getElementById('mission-hint')!;
     this.progressFill = document.getElementById('progress-fill')!;
     this.starsCountEl = document.getElementById('stars-count')!;
@@ -471,6 +556,7 @@ export class FarmGame {
     this.buildWorld();
     this.buildImplementBar();
     this.buildTractorBar();
+    this.buildMissionPicker();
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -520,14 +606,20 @@ export class FarmGame {
       for (let i = 0; i < TRACTORS.length; i++) {
         const def = TRACTORS[i];
         const raw = tractorRaws[i] as HTMLImageElement;
-        const keyed = def.chromaBlack ? chromaKeyBlack(raw) : canvasFromImage(raw);
+        const keyed =
+          def.keyMode === 'black'
+            ? chromaKeyBlack(raw)
+            : def.keyMode === 'soft'
+              ? chromaKeySoftBg(raw)
+              : canvasFromImage(raw);
         this.tractorImgs[def.id] = cropTransparent(keyed);
       }
       // Fallback: keep legacy traktor.png path if Deutz file missing processed ok
       if (!this.tractorImgs.deutz) {
         try {
           const legacy = await loadImage('./traktor.png');
-          this.tractorImgs.deutz = cropTransparent(chromaKeyBlack(legacy));
+          // Legacy art may be green — soft key only, never mid-green punch
+          this.tractorImgs.deutz = cropTransparent(chromaKeySoftBg(legacy));
         } catch {
           /* ignore */
         }
@@ -1059,6 +1151,46 @@ export class FarmGame {
     this.showToast('Začnimo znova!', 1600);
   }
 
+  /** Free mission picker — kids can jump without strict sequence. */
+  private buildMissionPicker(): void {
+    if (!this.missionPickEl) return;
+    this.missionPickEl.innerHTML = '';
+    MISSIONS.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = `${i + 1}. ${m.title}`;
+      this.missionPickEl.appendChild(opt);
+    });
+    this.missionPickEl.value = String(this.missionIndex);
+    this.missionPickEl.addEventListener('change', () => {
+      unlockSpeech();
+      unlockSfx();
+      const idx = Number(this.missionPickEl.value);
+      if (!Number.isFinite(idx)) return;
+      this.jumpToMission(idx);
+    });
+  }
+
+  /** Jump to any mission (free play). Resets world progress for a clean start. */
+  private jumpToMission(index: number): void {
+    if (index < 0 || index >= MISSIONS.length) return;
+    this.missionIndex = index;
+    this.phaseIndex = 0;
+    this.missionProgress = 0;
+    this.celebrating = false;
+    this.gameDone = false;
+    this.wrongEquipFlash = 0;
+    this.completedMissions = Math.min(this.completedMissions, index);
+    this.resetWorldState();
+    const needed = this.currentImplement();
+    this.selectedImplement = needed ?? 'plug';
+    this.rebuildImplementBar();
+    this.updateHud();
+    this.announceMission();
+    const title = this.currentMission().title;
+    this.showToast(`Naloga: ${title}`, 1600);
+  }
+
   private refreshImplementBar(): void {
     const needed = this.currentImplement();
     const buttons = this.implementBar.querySelectorAll<HTMLButtonElement>('.impl-btn');
@@ -1124,6 +1256,11 @@ export class FarmGame {
     }
 
     this.starsCountEl.textContent = String(this.completedMissions);
+    if (this.missionPickEl) {
+      const want = this.gameDone ? String(MISSIONS.length - 1) : String(this.missionIndex);
+      if (this.missionPickEl.value !== want) this.missionPickEl.value = want;
+      this.missionPickEl.disabled = false;
+    }
 
     const local = this.gameDone ? 1 : this.missionProgress;
     this.progressFill.style.width = `${Math.round(local * 100)}%`;
