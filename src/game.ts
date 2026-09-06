@@ -370,8 +370,6 @@ export class FarmGame {
   private deliveredBales = 0;
   /** Lost lamb for night mission (found when close). */
   private lostLamb = { x: 1600, y: 1280, found: false };
-  /** Soft mud slowdown cooldown / factor. */
-  private mudFactor = 1;
   /** Silage mound after corn harvest. */
   private silagePile = { x: 1100, y: 420, amount: 0 };
   /** 1 = dirty, 0 = clean. Washes off at washBay during wash mission. */
@@ -727,7 +725,6 @@ export class FarmGame {
     } else {
       this.lostLamb = { x: 1600, y: 1280, found: false };
     }
-    this.mudFactor = 1;
     this.silagePile = { x: 1100, y: 420, amount: 0 };
     this.particles = [];
 
@@ -1464,8 +1461,7 @@ export class FarmGame {
         const nx = jx / mag;
         const ny = jy / mag;
         this.tractor.angle = Math.atan2(ny, nx);
-        this.updateMudFactor();
-        const step = this.speed * this.mudFactor * dt * Math.min(1, mag);
+        const step = this.speed * dt * Math.min(1, mag);
         this.tractor.x += nx * step;
         this.tractor.y += ny * step;
         this.moving = true;
@@ -1655,24 +1651,6 @@ export class FarmGame {
       case 'neighbor':
         if (impl === 'prikolica') this.workNeighborDelivery();
         break;
-    }
-  }
-
-  private updateMudFactor(): void {
-    const mud = this.zones.find((z) => z.id === 'mudPath');
-    let inMud = false;
-    if (mud) {
-      inMud =
-        this.tractor.x > mud.x &&
-        this.tractor.x < mud.x + mud.w &&
-        this.tractor.y > mud.y &&
-        this.tractor.y < mud.y + mud.h;
-    }
-    // Dirty tractor sinks more in mud; clean tractor rolls better.
-    if (inMud) {
-      this.mudFactor = this.tractorDirt > 0.35 ? 0.45 : 0.72;
-    } else {
-      this.mudFactor = 1;
     }
   }
 
@@ -2509,12 +2487,6 @@ export class FarmGame {
       ctx.beginPath();
       ctx.ellipse(px, py, 18, 10, 0.2, 0, Math.PI * 2);
       ctx.fill();
-    }
-    if (this.mudFactor < 0.95) {
-      ctx.fillStyle = 'rgba(255, 235, 180, 0.55)';
-      ctx.font = '600 13px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('BLATO', mud.x + mud.w / 2, mud.y + 22);
     }
   }
 
