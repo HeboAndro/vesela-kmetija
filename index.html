@@ -16,6 +16,15 @@
     <div id="app">
       <canvas id="game" width="800" height="600"></canvas>
 
+      <div id="splash" aria-live="polite">
+        <div class="splash-card">
+          <div class="splash-emoji" aria-hidden="true">🚜</div>
+          <h1>Vesela kmetija</h1>
+          <p>Za Amadeja in Aleksa</p>
+          <div class="splash-bar" aria-hidden="true"><span></span></div>
+        </div>
+      </div>
+
       <div id="mission-card" class="fs-quest-card">
         <div class="quest-card-top">
           <span id="quest-bang" class="quest-bang" aria-hidden="true">!</span>
@@ -29,7 +38,7 @@
           <span id="mission-need-icon" aria-hidden="true">🪓</span>
           <span id="mission-need-label">Plug</span>
         </div>
-        <div id="mission-hint">Uporabi ročico spodaj levo</div>
+        <div id="mission-hint">Uporabi ročico spodaj levo.</div>
         <div id="mission-progress"><div id="progress-fill"></div></div>
         <button type="button" id="restart-btn">Začni znova</button>
       </div>
@@ -54,8 +63,8 @@
       <div id="implement-bar" aria-label="Priključki"></div>
 
       <div id="action-cluster" aria-label="Dejanja">
-        <button type="button" id="action-horn" class="action-btn" title="Hupa">📯</button>
-        <button type="button" id="action-cam" class="action-btn" title="Kamera">📷</button>
+        <button type="button" id="action-horn" class="action-btn" title="Hupa" aria-label="Hupa">📯</button>
+        <button type="button" id="action-cam" class="action-btn" title="Kamera" aria-label="Kamera">📷</button>
       </div>
 
       <div id="toast" hidden></div>

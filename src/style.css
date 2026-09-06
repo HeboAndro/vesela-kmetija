@@ -745,3 +745,91 @@ body {
     padding: 0.58rem 1rem;
   }
 }
+
+
+/* —— Splash / title —— */
+#splash {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, #2d5a34 0%, #122016 70%);
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+  pointer-events: none;
+}
+#splash.hide {
+  opacity: 0;
+  visibility: hidden;
+}
+.splash-card {
+  text-align: center;
+  color: #fff;
+  padding: 1.4rem 1.8rem;
+  border-radius: 1.1rem;
+  background: rgba(18, 28, 22, 0.55);
+  border: 2px solid rgba(255, 213, 79, 0.5);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.splash-emoji {
+  font-size: 2.6rem;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+}
+.splash-card h1 {
+  font-size: 1.55rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  margin: 0 0 0.25rem;
+}
+.splash-card p {
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0.88;
+  margin: 0 0 0.85rem;
+}
+.splash-bar {
+  width: 7.5rem;
+  height: 0.35rem;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.splash-bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd54f, #81c784);
+  animation: splash-load 1.1s ease-in-out infinite;
+}
+@keyframes splash-load {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
+/* —— Phone declutter —— */
+@media (max-width: 1023px) {
+  .tractor-bar-label {
+    display: none;
+  }
+  #mission-hint {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  #mission-need {
+    margin: 0.15rem 0 0.1rem;
+  }
+  #impl-chip-label {
+    max-width: 5.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

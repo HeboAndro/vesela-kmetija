@@ -431,11 +431,11 @@ export class FarmGame {
     kosilnica: { rot: 0, offsetX: 0.12, offsetY: 0.02, scale: 1.05 },
     zgrabljalnik: { rot: 0, offsetX: 0, offsetY: 0.04, scale: 1.05 },
     gnojnica: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.18 },
-    kombajn: { rot: 0, offsetX: 0.18, offsetY: 0.04, scale: 1.12 },
+    kombajn: { rot: 0, offsetX: 0.16, offsetY: 0.04, scale: 1.05 },
     // prikolica mirrored (hitch RIGHT); metla rotated 180° (hitch LEFT → flip).
-    prikolica: { rot: 0, offsetX: 0, offsetY: 0.08, scale: 1.22 },
+    prikolica: { rot: 0, offsetX: 0, offsetY: 0.07, scale: 1.15 },
     krmilnik: { rot: 0, offsetX: 0, offsetY: 0.06, scale: 1.2, flip: true },
-    vitla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.78 },
+    vitla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.88 },
     silazer: { rot: 0, offsetX: 0, offsetY: 0.05, scale: 1.0 },
     metla: { rot: 0, offsetX: 0, offsetY: 0.02, scale: 0.95, front: true, flip: true },
   };
@@ -578,7 +578,7 @@ export class FarmGame {
       e.preventDefault();
       unlockSfx();
       sfxSplash();
-      this.showToast('Beep beep!', 700);
+      this.showToast('Hupa!', 700);
     });
     const camBtn = document.getElementById('action-cam');
     camBtn?.addEventListener('click', (e) => {
@@ -702,6 +702,11 @@ export class FarmGame {
       this.implementImgs.vitla = keyCrop(vitla);
       this.implementImgs.metla = keyCrop(metla);
       this.ready = true;
+      const splash = document.getElementById('splash');
+      if (splash) {
+        splash.classList.add('hide');
+        window.setTimeout(() => splash.remove(), 450);
+      }
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
       this.refreshImplementBar();
@@ -711,7 +716,7 @@ export class FarmGame {
     } catch (err) {
       console.error(err);
       this.missionTitleEl.textContent = 'Napaka pri nalaganju';
-      this.missionHintEl.textContent = 'Preveri slike v public/';
+      this.missionHintEl.textContent = 'Preveri slike in osveži stran.';
     }
   }
 
@@ -1205,7 +1210,7 @@ export class FarmGame {
     this.refreshGarageButton();
     const needed = this.currentImplement();
     if (id === null) {
-      if (needed === null) this.showToast('Brez priključka — pelji na avtopralnico!', 1600);
+      if (needed === null) this.showToast('Brez priključka — pelji na pralnico!', 1600);
       else this.showToast('Priključek odklopljen', 1200);
       return;
     }
@@ -1215,11 +1220,11 @@ export class FarmGame {
     } else if (needed === null) {
       this.wrongEquipFlash = 1.2;
       sfxWrong();
-      this.showToast('Za pranje odklopiti priključek', 1800);
+      this.showToast('Za pranje odklopí priključek', 1800);
     } else if (!this.nearGarage) {
       this.wrongEquipFlash = 1.2;
       sfxWrong();
-      this.showToast(`Pelji v garažo po pravi priključek`, 1800);
+      this.showToast('Pelji v garažo po pravi priključek', 1800);
     } else {
       // At garage: honor the chosen implement even if mission wants another.
       const needLabel = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
@@ -1353,7 +1358,7 @@ export class FarmGame {
     const p = this.currentPhase();
     if (this.gameDone) {
       this.missionTitleEl.textContent = 'Vse naloge so končane! 🎉';
-      this.missionHintEl.textContent = 'Odlično delo, kmetiček! Pritisni Začni znova';
+      this.missionHintEl.textContent = 'Odlično, mladi kmet! Pritisni Začni znova.';
       this.restartBtn.classList.add('visible');
       this.restartBtn.hidden = false;
       this.missionNeedIcon.textContent = '★';
@@ -1501,7 +1506,7 @@ export class FarmGame {
         const detached = this.selectedImplement === null;
         this.garageBtn.textContent = detached
           ? 'Brez priključka ✓'
-          : 'Odklop priključka (pranje)';
+          : 'Odklopí za pranje';
       } else {
         const already = this.hasCorrectImplement();
         const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
@@ -2708,7 +2713,7 @@ export class FarmGame {
       this.celebrating = true;
       this.missionProgress = 1;
       this.updateHud();
-      const msg = p.phaseDone ?? 'Faza končana!';
+      const msg = p.phaseDone ?? 'Super! Nadaljujemo.';
       sfxSuccess();
       this.showToast(msg, 1800);
       speakSl(msg);
@@ -4210,7 +4215,7 @@ export class FarmGame {
 
     // Soft shadow under implement only (ground contact).
     ctx.save();
-    ctx.fillStyle = 'rgba(20, 30, 20, 0.16)';
+    ctx.fillStyle = 'rgba(20, 30, 20, 0.22)';
     const shadowLen =
       id === 'kombajn'
         ? size * 1.0

@@ -80,62 +80,62 @@ export const IMPLEMENTS: {
 export const MISSIONS: Mission[] = [
   {
     id: 'grain',
-    title: 'Oranje in sejanje žita',
-    success: 'Njiva je zorana in posejana!',
+    title: 'Oranje in sejanje',
+    success: 'Super! Njiva je zorana in posejana!',
     markerZone: 'rightField',
     phases: [
       {
         implement: 'plug',
-        hint: 'Priklopi Plug in prevozi zgornjo njivo žita — trava postane rjava zemlja.',
-        phaseDone: 'Njiva je zorana! Zdaj posejemo.',
+        hint: 'Priklopi plug in prevozi zgornjo njivo. Trava postane rjava zemlja.',
+        phaseDone: 'Njiva je zorana! Zdaj sejemo.',
       },
       {
         implement: 'sejalnik',
-        hint: 'Priklopi Sejalnik in posej zorane celice.',
+        hint: 'Priklopi sejalnik in posej zorano zemljo.',
       },
     ],
   },
   {
     id: 'hay',
     title: 'Cel dan sena',
-    success: 'Seno je pokošeno, balirano, ovito in na dvorišču!',
+    success: 'Bravo! Seno je na dvorišču!',
     markerZone: 'leftField',
     phases: [
       {
         implement: 'kosilnica',
-        hint: 'Kosilnica: pokosi visoko travo na senenem travniku (levo).',
+        hint: 'Priklopi kosilnico in pokosi visoko travo na levem travniku.',
         phaseDone: 'Trava je pokošena!',
       },
       {
         implement: 'zgrabljalnik',
-        hint: 'Zgrabljalnik: zgrabi pokošeno travo v vrste.',
+        hint: 'Zgrabi pokošeno travo v vrste.',
         phaseDone: 'Trava je v vrstah!',
       },
       {
         implement: 'balirka',
-        hint: 'Balirka: naredi rumene bale iz vrst.',
+        hint: 'Naredi rumene bale iz vrst.',
         phaseDone: 'Bale so pripravljene!',
       },
       {
         implement: 'ovijalka',
-        hint: 'Ovijalka: ovij bale v zeleno folijo.',
+        hint: 'Ovij bale v zeleno folijo.',
         phaseDone: 'Bale so ovite! Naloži jih na prikolico.',
       },
       {
         implement: 'prikolica',
-        hint: 'Prikolica: naloži ovite bale in jih pelji na dvorišče pri hlevu.',
+        hint: 'Naloži ovite bale in pelji na dvorišče pri hlevu.',
       },
     ],
   },
   {
     id: 'gnojnica',
-    title: 'Vožnja gnojnice na travnik',
-    success: 'Travnik je pognojen z gnojnico!',
+    title: 'Razvoz gnojnice',
+    success: 'Travnik je pognojen!',
     markerZone: 'manureField',
     phases: [
       {
         implement: 'gnojnica',
-        hint: 'Gnojnica: razvoz gnojnice po spodnjem travniku (temnejša trava, cisterna).',
+        hint: 'Priklopi gnojnico in razvozi gnojnico po spodnjem travniku.',
       },
     ],
   },
@@ -147,58 +147,58 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'gnojnica',
-        hint: 'Gnojnica: pelji do cisterne/gnojniškega zbiralnika in napolni rezervoar.',
+        hint: 'Pelji do cisterne in napolni rezervoar.',
         phaseDone: 'Cisterna je polna! Zdaj razvozimo po travniku.',
       },
       {
         implement: 'gnojnica',
-        hint: 'Gnojnica: razvoz gnojnice po travniku (manureField).',
+        hint: 'Razvozi gnojnico po travniku.',
       },
     ],
   },
   {
     id: 'koruza',
-    title: 'Koruza + silos',
+    title: 'Koruza in silos',
     success: 'Koruza je požeta in silaža je na kupu!',
     markerZone: 'cornField',
     phases: [
       {
         implement: 'sejalnik',
-        hint: 'Sejalnik: posej koruzo na koruznem polju (zgoraj desno, ob gozdu).',
+        hint: 'Posej koruzo na polju zgoraj desno, ob gozdu.',
         phaseDone: 'Koruza raste! Zdaj jo požanjemo za silažo.',
       },
       {
         implement: 'kombajn',
-        hint: 'Kombajn: požanjite koruzo — silaža gre na kup pri hlevu.',
+        hint: 'Požanji koruzo. Silaža gre na kup pri hlevu.',
       },
     ],
   },
   {
     id: 'gozd',
-    title: 'Gozdna veriga',
+    title: 'Delo v gozdu',
     success: 'Hlodi so na skladišču pri hlevu!',
     markerZone: 'forest',
     phases: [
       {
         implement: 'vitla',
-        hint: 'Vitla: podri nekaj dreves v gozdu (žaga na vitli).',
+        hint: 'Priklopi vitlo in podri nekaj dreves v gozdu.',
         phaseDone: 'Drevesa so podrta! Naloži hlode na prikolico.',
       },
       {
         implement: 'prikolica',
-        hint: 'Prikolica: naloži hlode in jih pelji na skladišče (dvorišče pri hlevu).',
+        hint: 'Naloži hlode in pelji na skladišče pri hlevu.',
       },
     ],
   },
   {
     id: 'feed',
-    title: 'Mešalnik krme',
+    title: 'Nahrani živali',
     success: 'Bravo! Govedo in ovce so siti!',
     markerZone: 'openBarn',
     phases: [
       {
         implement: 'krmilnik',
-        hint: 'Mešalnik (Trioliet): pelji po hlevskem hodniku — živali so levo in desno.',
+        hint: 'Priklopi mešalnik in pelji po hlevskem hodniku. Živali so levo in desno.',
       },
     ],
   },
@@ -210,57 +210,57 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'metla',
-        hint: 'Metla: počisti dvorišče pri hlevu (umazano zemljo).',
+        hint: 'Priklopi metlo in počisti dvorišče pri hlevu.',
       },
     ],
   },
   {
     id: 'wash',
-    title: 'Čiščenje traktorja',
+    title: 'Umij traktor',
     success: 'Traktor je čist!',
     markerZone: 'washBay',
     phases: [
       {
         implement: null,
-        hint: 'Pelji na avtopralnico (brez priključka) — milo in voda očistita traktor.',
+        hint: 'Odklopí priključek in pelji na pralnico. Milo in voda očistita traktor.',
       },
     ],
   },
   {
     id: 'night',
     title: 'Nočna vožnja',
-    success: 'Našli ste vsa izgubljena jagnjeta!',
+    success: 'Našel si vsa izgubljena jagnjeta!',
     markerZone: 'nightPaddock',
     manualAccept: true,
     phases: [
       {
         implement: 'prikolica',
-        hint: 'Noč je! Priklopi prikolico in s žarometi poišči 3 jagnjeta v nočni ogradi (desno spodaj).',
+        hint: 'Noč je! Priklopi prikolico in s žarometi poišči 3 jagnjeta v ogradi spodaj desno.',
       },
     ],
   },
   {
     id: 'sheep',
     title: 'Najdi 3 ovce',
-    success: 'Našli ste vse tri ovce!',
+    success: 'Našel si vse tri ovce!',
     markerZone: 'nightPaddock',
     manualAccept: true,
     phases: [
       {
         implement: null,
-        hint: 'Poišči 3 ovce na pašniku/ogradi (desno spodaj) — pelji blizu vsake.',
+        hint: 'Poišči 3 ovce na pašniku spodaj desno. Pelji blizu vsake.',
       },
     ],
   },
   {
     id: 'rescue',
     title: 'Reši traktor',
-    success: 'Stuck traktor je varno na dvorišču!',
+    success: 'Zataknjeni traktor je varno na dvorišču!',
     markerZone: 'stuckTractor',
     phases: [
       {
         implement: 'prikolica',
-        hint: 'Prikolica ali vitla: pelji do zataknjenega traktorja, priklopi in ga vleči na dvorišče pri garaži.',
+        hint: 'Priklopi prikolico ali vitlo, vleci zataknjeni traktor na dvorišče pri garaži.',
       },
     ],
   },
@@ -272,7 +272,7 @@ export const MISSIONS: Mission[] = [
     phases: [
       {
         implement: 'prikolica',
-        hint: 'Naloži ovite bale in pelji po ozki poti do sosedove hiše (spodaj levo) — ne trči v ograjo!',
+        hint: 'Naloži ovite bale in pelji po ozki poti do sosedove hiše spodaj levo. Pazi na ograjo!',
       },
     ],
   },
