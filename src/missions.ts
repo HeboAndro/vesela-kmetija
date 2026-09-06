@@ -190,11 +190,11 @@ export const MISSIONS: Mission[] = [
   {
     id: 'night',
     title: 'Nočna vožnja',
-    success: 'Našli ste izgubljeno jagnje!',
+    success: 'Našli ste vsa izgubljena jagnjeta!',
     phases: [
       {
         implement: 'prikolica',
-        hint: 'Noč je! Priklopi prikolico in poišči jagnje v ograjeni nočni ogradi (levo spodaj).',
+        hint: 'Noč je! Priklopi prikolico in s žarometi poišči 3 jagnjeta v nočni ogradi (desno spodaj).',
       },
     ],
   },

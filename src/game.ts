@@ -368,8 +368,11 @@ export class FarmGame {
   private trailerBales = 0;
   /** Wrapped bales delivered to barn yard or neighbor. */
   private deliveredBales = 0;
-  /** Lost lamb for night mission (found when close). */
-  private lostLamb = { x: 1600, y: 1280, found: false };
+  /** Lost lambs/sheep for night mission (find with headlights). */
+  private lostLambs: { x: number; y: number; found: boolean; sparkle: number }[] = [];
+  /** Fixed starfield for night overlay (world coords). */
+  private nightStars: { x: number; y: number; r: number; phase: number }[] = [];
+  private static readonly NIGHT_LAMB_COUNT = 3;
   /** Silage mound after corn harvest. */
   private silagePile = { x: 1100, y: 420, amount: 0 };
   /** 1 = dirty, 0 = clean. Washes off at washBay during wash mission. */
@@ -715,15 +718,15 @@ export class FarmGame {
     this.deliveredLogs = 0;
     this.trailerBales = 0;
     this.deliveredBales = 0;
-    const nightPad = this.zones.find((z) => z.id === 'nightPaddock');
-    if (nightPad) {
-      this.lostLamb = {
-        x: nightPad.x + 40 + Math.random() * (nightPad.w - 80),
-        y: nightPad.y + 40 + Math.random() * (nightPad.h - 80),
-        found: false,
-      };
-    } else {
-      this.lostLamb = { x: 1600, y: 1280, found: false };
+    this.spawnNightLambs();
+    this.nightStars = [];
+    for (let i = 0; i < 55; i++) {
+      this.nightStars.push({
+        x: 40 + Math.random() * (MAP_W - 80),
+        y: 30 + Math.random() * (MAP_H * 0.55),
+        r: 0.8 + Math.random() * 1.8,
+        phase: Math.random() * Math.PI * 2,
+      });
     }
     this.silagePile = { x: 1100, y: 420, amount: 0 };
     this.particles = [];
@@ -1108,7 +1111,13 @@ export class FarmGame {
     } else {
       const phaseNum = m.phases.length > 1 ? ` (${this.phaseIndex + 1}/${m.phases.length})` : '';
       this.missionTitleEl.textContent = `${m.title}${phaseNum}`;
-      this.missionHintEl.textContent = p.hint;
+      if (m.id === 'night') {
+        const found = this.lostLambs.filter((l) => l.found).length;
+        const need = Math.max(1, this.lostLambs.length || FarmGame.NIGHT_LAMB_COUNT);
+        this.missionHintEl.textContent = `${p.hint}  (${found}/${need})`;
+      } else {
+        this.missionHintEl.textContent = p.hint;
+      }
       this.restartBtn.classList.remove('visible');
       this.restartBtn.hidden = true;
       this.refreshMissionNeed();
@@ -1219,8 +1228,9 @@ export class FarmGame {
       return { x: g.x + g.w / 2, y: g.y + g.h / 2, kind: 'garage' };
     }
     const m = this.currentMission();
-    if (m.id === 'night' && !this.lostLamb.found) {
-      return { x: this.lostLamb.x, y: this.lostLamb.y, kind: 'zone' };
+    if (m.id === 'night') {
+      const next = this.nearestUnfoundLamb();
+      if (next) return { x: next.x, y: next.y, kind: 'zone' };
     }
     const zone = this.currentMissionZone();
     if (!zone) return null;
@@ -1248,8 +1258,7 @@ export class FarmGame {
     if (m.id === 'wash') return this.zones.find((z) => z.id === 'washBay');
     if (m.id === 'yard') return this.zones.find((z) => z.id === 'barnYard');
     if (m.id === 'night') {
-      if (this.lostLamb.found) return this.zones.find((z) => z.id === 'barnYard');
-      return undefined; // arrow points at lamb separately
+      return undefined; // arrow points at nearest unfound lamb
     }
     if (m.id === 'neighbor') return this.zones.find((z) => z.id === 'neighbor');
     return undefined;
@@ -1479,6 +1488,7 @@ export class FarmGame {
         // Holding in the pond also washes dirt off
         this.workWash();
       }
+      this.updateNightLambGlow();
     }
 
     // Smooth camera follow tractor
@@ -1684,39 +1694,139 @@ export class FarmGame {
     }
   }
 
-  /** Night: find lost lamb with headlights, then bring near barnYard. */
+  /** Night: find multiple lost lambs with headlights (progress N/3). */
   private workNightRescue(): void {
-    if (!this.lostLamb.found) {
-      const d = Math.hypot(this.lostLamb.x - this.tractor.x, this.lostLamb.y - this.tractor.y);
-      // Need to get close (headlights help visually)
-      if (d < 70) {
-        this.lostLamb.found = true;
-        this.showToast('Jagnje najdeno! Pelji ga na dvorišče.', 2000);
-        speakSl('Jagnje najdeno! Pelji ga na dvorišče.');
+    const need = Math.max(1, this.lostLambs.length);
+    for (const lamb of this.lostLambs) {
+      if (lamb.found) {
+        // Happy bounce near tractor once found (soft follow toward cabin)
+        lamb.x += (this.tractor.x - lamb.x) * 0.04;
+        lamb.y += (this.tractor.y - 36 - lamb.y) * 0.04;
+        lamb.sparkle = Math.max(0, lamb.sparkle - 0.02);
+        continue;
+      }
+      const d = Math.hypot(lamb.x - this.tractor.x, lamb.y - this.tractor.y);
+      const lit = this.inHeadlightBeam(lamb.x, lamb.y);
+      if (lit) {
+        lamb.sparkle = Math.min(1, lamb.sparkle + 0.08);
+      } else {
+        lamb.sparkle = Math.max(0, lamb.sparkle - 0.04);
+      }
+      // Find when close; headlights make them glow so kids know where to go
+      if (d < 78 && (lit || d < 52)) {
+        lamb.found = true;
+        lamb.sparkle = 1;
+        const count = this.lostLambs.filter((l) => l.found).length;
+        this.showToast(`Našel si jagnje! (${count}/${need})`, 1800);
+        speakSl('Našel si jagnje!');
         sfxFeed();
       }
-      this.missionProgress = Math.max(0, 1 - d / 600) * 0.5;
-      this.updateHud();
-      return;
     }
-    // Carry lamb with tractor (follows) toward yard
-    this.lostLamb.x += (this.tractor.x - this.lostLamb.x) * 0.12;
-    this.lostLamb.y += (this.tractor.y - 28 - this.lostLamb.y) * 0.12;
-    const yard = this.zones.find((z) => z.id === 'barnYard')!;
-    const inYard =
-      this.tractor.x > yard.x &&
-      this.tractor.x < yard.x + yard.w &&
-      this.tractor.y > yard.y &&
-      this.tractor.y < yard.y + yard.h;
-    this.missionProgress = inYard ? 1 : 0.55 + Math.min(0.4, 80 / (40 + Math.hypot(
-      this.tractor.x - (yard.x + yard.w / 2),
-      this.tractor.y - (yard.y + yard.h / 2),
-    )));
+    const found = this.lostLambs.filter((l) => l.found).length;
+    this.missionProgress = found / need;
     this.updateHud();
-    if (inYard) {
+    if (found >= need) {
       this.missionProgress = 1;
       this.completePhase();
     }
+  }
+
+  /** Soft glow tick even when standing still (headlights aimed at lambs). */
+  private updateNightLambGlow(): void {
+    if (this.currentMission().id !== 'night' || this.celebrating || this.gameDone) return;
+    for (const lamb of this.lostLambs) {
+      if (lamb.found) {
+        lamb.sparkle = Math.max(0, lamb.sparkle - 0.02);
+        continue;
+      }
+      if (this.inHeadlightBeam(lamb.x, lamb.y)) {
+        lamb.sparkle = Math.min(1, lamb.sparkle + 0.08);
+      } else {
+        lamb.sparkle = Math.max(0, lamb.sparkle - 0.04);
+      }
+    }
+  }
+
+  private spawnNightLambs(): void {
+    const count = FarmGame.NIGHT_LAMB_COUNT;
+    const nightPad = this.zones.find((z) => z.id === 'nightPaddock');
+    const spots: { x: number; y: number }[] = [];
+    const tryPlace = (x: number, y: number): boolean => {
+      for (const s of spots) {
+        if (Math.hypot(s.x - x, s.y - y) < 110) return false;
+      }
+      spots.push({ x, y });
+      return true;
+    };
+    if (nightPad) {
+      // 2 inside paddock, 1 scattered just outside nearby
+      for (let i = 0; i < count; i++) {
+        for (let attempt = 0; attempt < 40; attempt++) {
+          let x: number;
+          let y: number;
+          if (i < count - 1) {
+            x = nightPad.x + 50 + Math.random() * (nightPad.w - 100);
+            y = nightPad.y + 50 + Math.random() * (nightPad.h - 100);
+          } else {
+            // Scatter near paddock edge (outside / fringe)
+            const side = Math.floor(Math.random() * 4);
+            if (side === 0) {
+              x = nightPad.x - 40 - Math.random() * 120;
+              y = nightPad.y + Math.random() * nightPad.h;
+            } else if (side === 1) {
+              x = nightPad.x + nightPad.w + 40 + Math.random() * 120;
+              y = nightPad.y + Math.random() * nightPad.h;
+            } else if (side === 2) {
+              x = nightPad.x + Math.random() * nightPad.w;
+              y = nightPad.y - 40 - Math.random() * 100;
+            } else {
+              x = nightPad.x + Math.random() * nightPad.w;
+              y = nightPad.y + nightPad.h + 40 + Math.random() * 80;
+            }
+            x = Math.max(80, Math.min(MAP_W - 80, x));
+            y = Math.max(80, Math.min(MAP_H - 80, y));
+          }
+          if (tryPlace(x, y)) break;
+        }
+      }
+    }
+    while (spots.length < count) {
+      tryPlace(1500 + Math.random() * 500, 1180 + Math.random() * 280);
+    }
+    this.lostLambs = spots.slice(0, count).map((s) => ({
+      x: s.x,
+      y: s.y,
+      found: false,
+      sparkle: 0,
+    }));
+  }
+
+  private nearestUnfoundLamb(): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestD = Infinity;
+    for (const lamb of this.lostLambs) {
+      if (lamb.found) continue;
+      const d = Math.hypot(lamb.x - this.tractor.x, lamb.y - this.tractor.y);
+      if (d < bestD) {
+        bestD = d;
+        best = lamb;
+      }
+    }
+    return best;
+  }
+
+  /** True if world point is inside tractor headlight cone. */
+  private inHeadlightBeam(px: number, py: number, range = 240, halfAngle = 0.55): boolean {
+    const dx = px - this.tractor.x;
+    const dy = py - this.tractor.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 42) return true;
+    if (dist > range) return false;
+    const ang = Math.atan2(dy, dx);
+    let diff = ang - this.tractor.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return Math.abs(diff) <= halfAngle;
   }
 
   /** Neighbor delivery: pick wrapped bales, avoid fence, unload at neighbor. */
@@ -2560,61 +2670,123 @@ export class FarmGame {
   }
 
   private drawLostLamb(ctx: CanvasRenderingContext2D): void {
-    if (this.currentMission().id !== 'night' && !this.lostLamb.found) {
-      // only show during night mission
-    }
     if (this.currentMission().id !== 'night') return;
-    const { x, y, found } = this.lostLamb;
-    const bob = Math.sin(this.pulse * 3) * 2;
-    ctx.save();
-    ctx.translate(x, y + bob);
-    // sheep body
-    ctx.fillStyle = found ? '#fff8e1' : '#f5f5f5';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 16, 11, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#212121';
-    ctx.beginPath();
-    ctx.arc(12, -2, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(13.5, -3, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    if (!found) {
-      ctx.fillStyle = 'rgba(255, 235, 59, 0.7)';
-      ctx.font = '700 14px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('?', 0, -20);
+    for (let i = 0; i < this.lostLambs.length; i++) {
+      const lamb = this.lostLambs[i]!;
+      const bob = Math.sin(this.pulse * 3 + i) * 2;
+      const lit = !lamb.found && this.inHeadlightBeam(lamb.x, lamb.y);
+      ctx.save();
+      ctx.translate(lamb.x, lamb.y + bob);
+
+      // Soft glow / sparkle when in headlight beam
+      if (lit || lamb.sparkle > 0.05) {
+        const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 38);
+        const a = 0.25 + lamb.sparkle * 0.45;
+        g.addColorStop(0, `rgba(255, 250, 200, ${a})`);
+        g.addColorStop(0.45, `rgba(255, 230, 120, ${a * 0.45})`);
+        g.addColorStop(1, 'rgba(255, 220, 80, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, 38, 0, Math.PI * 2);
+        ctx.fill();
+        // Tiny sparkles
+        ctx.fillStyle = `rgba(255, 255, 220, ${0.5 + lamb.sparkle * 0.5})`;
+        for (let s = 0; s < 5; s++) {
+          const sa = this.pulse * 4 + s * 1.3 + i;
+          const sr = 18 + Math.sin(sa) * 8;
+          ctx.beginPath();
+          ctx.arc(Math.cos(sa) * sr, Math.sin(sa * 1.4) * sr * 0.7, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // sheep / lamb body
+      ctx.fillStyle = lamb.found ? '#fff8e1' : '#f5f5f5';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 16, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#212121';
+      ctx.beginPath();
+      ctx.arc(12, -2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(13.5, -3, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (!lamb.found) {
+        ctx.fillStyle = lit ? 'rgba(255, 255, 180, 0.95)' : 'rgba(255, 235, 59, 0.55)';
+        ctx.font = '700 14px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('?', 0, -20);
+      } else {
+        ctx.fillStyle = 'rgba(129, 199, 132, 0.95)';
+        ctx.font = '700 14px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('♥', 0, -18);
+      }
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   private drawNightOverlay(ctx: CanvasRenderingContext2D): void {
     if (this.currentMission().id !== 'night' || this.gameDone) return;
     const ang = this.tractor.angle;
-    // Dark veil with headlights cone + cabin cut out (evenodd — safe)
+    const tx = this.tractor.x;
+    const ty = this.tractor.y;
+    // Darker night veil with clear headlight cone + cabin cut out
     ctx.save();
-    ctx.fillStyle = 'rgba(8, 12, 28, 0.78)';
+    ctx.fillStyle = 'rgba(4, 8, 22, 0.9)';
     ctx.beginPath();
     ctx.rect(0, 0, MAP_W, MAP_H);
-    // headlight cone hole
-    ctx.moveTo(this.tractor.x, this.tractor.y);
-    ctx.arc(this.tractor.x, this.tractor.y, 230, ang - 0.58, ang + 0.58);
+    // Wide outer cone hole
+    ctx.moveTo(tx, ty);
+    ctx.arc(tx, ty, 265, ang - 0.62, ang + 0.62);
     ctx.closePath();
-    // cabin hole
-    ctx.moveTo(this.tractor.x + 48, this.tractor.y);
-    ctx.arc(this.tractor.x, this.tractor.y, 48, 0, Math.PI * 2);
+    // Cabin hole
+    ctx.moveTo(tx + 52, ty);
+    ctx.arc(tx, ty, 52, 0, Math.PI * 2);
     ctx.closePath();
     ctx.fill('evenodd');
     ctx.restore();
-    // Warm headlight wash
+
+    // Stars in sky / dark areas (clipped away from bright cone)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, MAP_W, MAP_H);
+    ctx.moveTo(tx, ty);
+    ctx.arc(tx, ty, 265, ang - 0.62, ang + 0.62);
+    ctx.closePath();
+    ctx.moveTo(tx + 52, ty);
+    ctx.arc(tx, ty, 52, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip('evenodd');
+    for (const st of this.nightStars) {
+      const tw = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(this.pulse * 2.2 + st.phase));
+      ctx.fillStyle = `rgba(230, 240, 255, ${tw})`;
+      ctx.beginPath();
+      ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Clear warm headlight beam (outer soft + bright core)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = 'rgba(255, 236, 170, 0.14)';
+    const beam = ctx.createRadialGradient(tx, ty, 8, tx, ty, 250);
+    beam.addColorStop(0, 'rgba(255, 250, 210, 0.42)');
+    beam.addColorStop(0.35, 'rgba(255, 230, 150, 0.22)');
+    beam.addColorStop(1, 'rgba(255, 210, 100, 0)');
+    ctx.fillStyle = beam;
     ctx.beginPath();
-    ctx.moveTo(this.tractor.x, this.tractor.y);
-    ctx.arc(this.tractor.x, this.tractor.y, 210, ang - 0.5, ang + 0.5);
+    ctx.moveTo(tx, ty);
+    ctx.arc(tx, ty, 250, ang - 0.55, ang + 0.55);
+    ctx.closePath();
+    ctx.fill();
+    // Narrow brighter core beam
+    ctx.fillStyle = 'rgba(255, 255, 230, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.arc(tx, ty, 200, ang - 0.22, ang + 0.22);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
