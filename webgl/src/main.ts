@@ -8,6 +8,7 @@ const HALF_W = MAP_W / 2;
 const HALF_H = MAP_H / 2;
 
 type ImplId = 'plug' | 'balirka' | 'prikolica' | 'vitla';
+type TractorBrand = 'deutz' | 'goldoni' | 'utb' | 'torpedo';
 
 const IMPL_LABELS: Record<ImplId, string> = {
   plug: 'Plug',
@@ -16,11 +17,23 @@ const IMPL_LABELS: Record<ImplId, string> = {
   vitla: 'Vitla',
 };
 
+/** Brand body/cab accents — tractors ARE low-poly 3D meshes (not boxes-only). */
+const BRANDS: Record<
+  TractorBrand,
+  { label: string; body: number; dark: number; cab: number; roof: number }
+> = {
+  deutz: { label: 'Deutz', body: 0x6abf2e, dark: 0x2e7d32, cab: 0x212121, roof: 0x1a1a1a },
+  goldoni: { label: 'Goldoni', body: 0xf5d76e, dark: 0xc9a227, cab: 0x37474f, roof: 0x455a64 },
+  utb: { label: 'UTB', body: 0xc62828, dark: 0x8e0000, cab: 0x263238, roof: 0x37474f },
+  torpedo: { label: 'Torpedo', body: 0x1565c0, dark: 0x0d47a1, cab: 0x1a237e, roof: 0x283593 },
+};
+
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const joyBase = document.getElementById('joy-base') as HTMLElement;
 const joyKnob = document.getElementById('joy-knob') as HTMLElement;
 const implLabel = document.getElementById('impl-label') as HTMLElement;
 const implBar = document.getElementById('impl-bar') as HTMLElement;
+const brandBar = document.getElementById('brand-bar') as HTMLElement | null;
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -66,20 +79,35 @@ function makeGround(texture: THREE.Texture): THREE.Mesh {
   return mesh;
 }
 
-function makeTractor(): THREE.Group {
+/** Low-poly 3D tractor: hood, fenders, cab, exhaust, wheels — color-swappable by brand. */
+function makeTractor(brand: TractorBrand): THREE.Group {
   const g = new THREE.Group();
-  const green = 0x3f8f3a;
-  const dark = 0x2a6628;
-  const cabin = 0x263238;
+  const c = BRANDS[brand];
   const rubber = 0x212121;
   const rim = 0x90a4ae;
+  const glass = 0xb0bec5;
 
-  g.add(box(1.45, 0.55, 2.5, green, 0, 0.58, 0.05));
-  g.add(box(1.4, 0.32, 1.15, dark, 0, 0.98, 0.55));
-  g.add(box(1.2, 0.9, 1.05, cabin, 0, 1.28, -0.5));
-  g.add(box(1.05, 0.12, 0.95, 0xf5f5f5, 0, 1.78, -0.5));
-  g.add(box(1.0, 0.5, 0.85, 0xb0bec5, 0, 1.48, -0.5));
-  g.add(box(0.12, 0.75, 0.12, 0x455a64, -0.48, 1.4, 0.15));
+  // Chassis / belly
+  g.add(box(1.15, 0.28, 2.35, 0x37474f, 0, 0.42, 0.05));
+  // Hood / engine body (tapered feel via two boxes)
+  g.add(box(1.35, 0.55, 1.35, c.body, 0, 0.72, 0.55));
+  g.add(box(1.15, 0.28, 0.55, c.dark, 0, 1.05, 0.95));
+  // Front grille plate
+  g.add(box(0.95, 0.42, 0.08, 0x212121, 0, 0.72, 1.25));
+  // Fenders over rear
+  g.add(box(1.55, 0.12, 0.85, c.body, 0, 0.95, -0.75));
+  g.add(box(0.18, 0.35, 0.7, c.body, -0.72, 0.78, -0.75));
+  g.add(box(0.18, 0.35, 0.7, c.body, 0.72, 0.78, -0.75));
+  // Cabin
+  g.add(box(1.15, 0.95, 1.05, c.cab, 0, 1.35, -0.45));
+  g.add(box(1.05, 0.55, 0.9, glass, 0, 1.4, -0.45));
+  g.add(box(1.1, 0.1, 1.0, c.roof, 0, 1.88, -0.45));
+  // Exhaust stack
+  g.add(box(0.1, 0.85, 0.1, 0x455a64, -0.48, 1.55, 0.15));
+  g.add(box(0.14, 0.08, 0.14, 0x263238, -0.48, 2.0, 0.15));
+  // Work lights
+  g.add(box(0.12, 0.08, 0.08, 0xfff59d, -0.4, 1.9, 0.1));
+  g.add(box(0.12, 0.08, 0.08, 0xfff59d, 0.4, 1.9, 0.1));
 
   const wheel = (x: number, z: number, r: number, w: number) => {
     const tire = new THREE.Mesh(
@@ -112,12 +140,12 @@ function makeTractor(): THREE.Group {
   pin.position.set(0, 0.38, -1.78);
   pin.name = 'hitchPin';
   g.add(pin);
+  g.userData.brand = brand;
   return g;
 }
 
 function makeImplement(id: ImplId): THREE.Group {
   const g = new THREE.Group();
-  // Hitch eye at local origin; body trails in −Z
   g.add(box(0.12, 0.08, 0.55, 0x607d8b, 0, 0.05, -0.2));
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(0.1, 0.03, 8, 12),
@@ -171,7 +199,6 @@ function makeImplement(id: ImplId): THREE.Group {
       g.add(tire);
     }
   } else if (id === 'vitla') {
-    // Forestry winch + chainsaw (žaga) on top
     g.add(box(0.95, 0.55, 0.85, 0x455a64, 0, 0.5, -0.85));
     g.add(box(0.75, 0.35, 0.55, 0x78909c, 0, 0.7, -0.85));
     g.add(box(0.85, 0.1, 0.7, 0x2e7d32, 0, 0.9, -0.85));
@@ -190,7 +217,19 @@ function makeImplement(id: ImplId): THREE.Group {
   return g;
 }
 
-const tractor = makeTractor();
+function disposeObject(root: THREE.Object3D) {
+  root.traverse((o: THREE.Object3D) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    m.geometry?.dispose();
+    const mat = m.material;
+    if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+    else mat?.dispose();
+  });
+}
+
+let currentBrand: TractorBrand = 'deutz';
+let tractor = makeTractor(currentBrand);
 tractor.position.set(0, 0, 8);
 scene.add(tractor);
 
@@ -202,17 +241,29 @@ let currentImpl: ImplId = 'plug';
 let implMesh = makeImplement(currentImpl);
 hitchRoot.add(implMesh);
 
+function setBrand(brand: TractorBrand) {
+  currentBrand = brand;
+  const pos = tractor.position.clone();
+  const rotY = tractor.rotation.y;
+  // Detach hitch before disposing the old tractor mesh tree.
+  hitchRoot.parent?.remove(hitchRoot);
+  scene.remove(tractor);
+  disposeObject(tractor);
+  tractor = makeTractor(brand);
+  tractor.position.copy(pos);
+  tractor.rotation.y = rotY;
+  scene.add(tractor);
+  tractor.add(hitchRoot);
+  hitchRoot.position.set(0, 0.28, -1.78);
+  brandBar?.querySelectorAll('button').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-brand') === brand);
+  });
+}
+
 function setImplement(id: ImplId) {
   currentImpl = id;
   hitchRoot.remove(implMesh);
-  implMesh.traverse((o: THREE.Object3D) => {
-    const m = o as THREE.Mesh;
-    if (!m.isMesh) return;
-    m.geometry?.dispose();
-    const mat = m.material;
-    if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-    else mat?.dispose();
-  });
+  disposeObject(implMesh);
   implMesh = makeImplement(id);
   hitchRoot.add(implMesh);
   implLabel.textContent = IMPL_LABELS[id];
@@ -228,6 +279,13 @@ implBar.addEventListener('click', (e) => {
   if (id && id in IMPL_LABELS) setImplement(id);
 });
 
+brandBar?.addEventListener('click', (e) => {
+  const t = (e.target as HTMLElement).closest('button');
+  if (!t) return;
+  const id = t.getAttribute('data-brand') as TractorBrand | null;
+  if (id && id in BRANDS) setBrand(id);
+});
+
 const keys: Record<string, boolean> = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
@@ -235,6 +293,10 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Digit2') setImplement('balirka');
   if (e.code === 'Digit3') setImplement('prikolica');
   if (e.code === 'Digit4') setImplement('vitla');
+  if (e.code === 'KeyQ') setBrand('deutz');
+  if (e.code === 'KeyE') setBrand('goldoni');
+  if (e.code === 'KeyR') setBrand('utb');
+  if (e.code === 'KeyT') setBrand('torpedo');
 });
 window.addEventListener('keyup', (e) => {
   keys[e.code] = false;
@@ -300,7 +362,6 @@ loader.load(
   },
   undefined,
   () => {
-    // Fallback green if texture missing
     const fallback = new THREE.Mesh(
       new THREE.PlaneGeometry(MAP_W, MAP_H),
       new THREE.MeshLambertMaterial({ color: 0x4caf50 }),
@@ -336,7 +397,6 @@ function animate() {
   }
   tractor.rotation.y = heading;
 
-  // Slightly elevated chase camera (behind tractor)
   const height = 7.5;
   camDesired.set(
     tractor.position.x - Math.sin(heading) * 10,

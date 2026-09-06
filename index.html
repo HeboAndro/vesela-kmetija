@@ -15,8 +15,11 @@
     <div id="app">
       <canvas id="game" width="800" height="600"></canvas>
 
-      <div id="mission-card">
-        <div id="mission-title">Pripravi se!</div>
+      <div id="mission-card" class="fs-quest-card">
+        <div class="quest-card-top">
+          <span id="quest-bang" class="quest-bang" aria-hidden="true">!</span>
+          <div id="mission-title">Pripravi se!</div>
+        </div>
         <label id="mission-pick-wrap" for="mission-pick">
           <span class="mission-pick-label">Naloga</span>
           <select id="mission-pick" aria-label="Izberi nalogo"></select>
@@ -42,7 +45,17 @@
         <div id="tractor-choices" class="tractor-choices"></div>
       </div>
 
+      <div id="impl-chip" aria-label="Trenutni priključek">
+        <span id="impl-chip-icon" aria-hidden="true">🔓</span>
+        <span id="impl-chip-label">Brez</span>
+      </div>
+
       <div id="implement-bar" aria-label="Priključki"></div>
+
+      <div id="action-cluster" aria-label="Dejanja">
+        <button type="button" id="action-horn" class="action-btn" title="Hupa">📯</button>
+        <button type="button" id="action-cam" class="action-btn" title="Kamera">📷</button>
+      </div>
 
       <div id="toast" hidden></div>
     </div>
