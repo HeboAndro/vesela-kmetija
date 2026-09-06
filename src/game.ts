@@ -402,6 +402,8 @@ export class FarmGame {
   private implChipIcon: HTMLElement | null = null;
   private implChipLabel: HTMLElement | null = null;
   private nearGarage = false;
+  /** Implements parked at the garage rack — each slot stores ImplementId (never a bare index). */
+  private parkedSlots: { id: ImplementId; x: number; y: number; r: number }[] = [];
 
   private mapImg: HTMLImageElement | null = null;
   private tractorImg: HTMLCanvasElement | HTMLImageElement | null = null;
@@ -601,6 +603,19 @@ export class FarmGame {
       this.attachNeededFromGarage();
     });
 
+    // Mission-need chip: tap to equip THAT required implement (by id) when at garage.
+    const needEl = document.getElementById('mission-need');
+    if (needEl) {
+      needEl.style.cursor = 'pointer';
+      needEl.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        unlockSpeech();
+        unlockSfx();
+        this.attachNeededFromGarage();
+      });
+    }
+
     this.buildWorld();
     this.buildImplementBar();
     this.buildTractorBar();
@@ -738,7 +753,29 @@ export class FarmGame {
       { id: 'neighbor', x: 2040, y: 30, w: 340, h: 360 },
       { id: 'fenceCorridor', x: 1760, y: 120, w: 280, h: 200 },
     ];
+    this.rebuildParkedSlots();
     this.resetWorldState();
+  }
+
+  /** Parked hitch rack south of garage — positions tied to garage zone (survives map resize). */
+  private rebuildParkedSlots(): void {
+    const g = this.zones.find((z) => z.id === 'garage');
+    if (!g) {
+      this.parkedSlots = [];
+      return;
+    }
+    const cols = 4;
+    const gapX = 74;
+    const gapY = 70;
+    const originX = g.x + 24;
+    const originY = g.y + g.h + 8;
+    // Map by IMPLEMENTS[].id so hitch/sprite never drifts from list order vs another array.
+    this.parkedSlots = IMPLEMENTS.map((item, i) => ({
+      id: item.id,
+      x: originX + (i % cols) * gapX,
+      y: originY + Math.floor(i / cols) * gapY,
+      r: 34,
+    }));
   }
 
   /** Reset fields, meadow, animals, tractor — safe to call on restart without rebinding input. */
@@ -1161,6 +1198,8 @@ export class FarmGame {
   }
 
   private selectImplement(id: ImplementId | null): void {
+    // Always equip the exact id the player chose (toolbar / parked rack / garage).
+    // Never remap through array index — id is the source of truth for sprite+hitch.
     this.selectedImplement = id;
     this.refreshImplementBar();
     this.refreshGarageButton();
@@ -1171,16 +1210,22 @@ export class FarmGame {
       return;
     }
     const label = IMPLEMENTS.find((i) => i.id === id)?.label ?? id;
-    if (id === needed) {
+    if (this.hasCorrectImplement()) {
       this.showToast(`${label} priklopljen!`, 1400);
     } else if (needed === null) {
       this.wrongEquipFlash = 1.2;
       sfxWrong();
       this.showToast('Za pranje odklopiti priključek', 1800);
-    } else {
+    } else if (!this.nearGarage) {
       this.wrongEquipFlash = 1.2;
       sfxWrong();
       this.showToast(`Pelji v garažo po pravi priključek`, 1800);
+    } else {
+      // At garage: honor the chosen implement even if mission wants another.
+      const needLabel = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
+      this.wrongEquipFlash = 1.2;
+      sfxWrong();
+      this.showToast(`${label} priklopljen — naloga rabi: ${needLabel}`, 1800);
     }
   }
 
@@ -1420,15 +1465,25 @@ export class FarmGame {
       return;
     }
     const needed = this.currentImplement();
-    if (this.selectedImplement === needed) {
-      if (needed === null) {
+    if (needed === null) {
+      if (this.selectedImplement === null) {
         this.showToast('Že brez priključka', 1200);
-      } else {
-        const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
-        this.showToast(`${label} je že priklopljen`, 1200);
+        return;
       }
+      this.selectImplement(null);
+      this.refreshGarageButton();
       return;
     }
+    // Rescue accepts vitla or prikolica — don't yank a valid vitla for prikolica.
+    if (this.hasCorrectImplement()) {
+      const label =
+        IMPLEMENTS.find((i) => i.id === this.selectedImplement)?.label ??
+        IMPLEMENTS.find((i) => i.id === needed)?.label ??
+        'Priključek';
+      this.showToast(`${label} je že priklopljen`, 1200);
+      return;
+    }
+    // Equip the mission-required implement by its id (not list index).
     this.selectImplement(needed);
     this.refreshGarageButton();
   }
@@ -1442,15 +1497,18 @@ export class FarmGame {
     this.garageBtn.hidden = !show;
     if (show) {
       const needed = this.currentImplement();
-      const already = this.selectedImplement === needed;
       if (needed === null) {
-        this.garageBtn.textContent = already
+        const detached = this.selectedImplement === null;
+        this.garageBtn.textContent = detached
           ? 'Brez priključka ✓'
           : 'Odklop priključka (pranje)';
       } else {
+        const already = this.hasCorrectImplement();
         const label = IMPLEMENTS.find((i) => i.id === needed)?.label ?? needed;
+        const have =
+          IMPLEMENTS.find((i) => i.id === this.selectedImplement)?.label ?? label;
         this.garageBtn.textContent = already
-          ? `Priklop: ${label} ✓`
+          ? `Priklop: ${have} ✓`
           : `Zamenjaj priključek → ${label}`;
       }
     }
@@ -1681,6 +1739,8 @@ export class FarmGame {
             /* ignore */
           }
           setKnob(sx, sy);
+        } else if (this.tryPickParkedAtScreen(sx, sy)) {
+          // Equipped parked implement by its id at the garage rack.
         } else if (this.tryAcceptQuestAtScreen(sx, sy)) {
           // Accepted a ! marker (esp. night/sheep manual accept).
         } else {
@@ -2767,6 +2827,7 @@ export class FarmGame {
     this.drawQuestMarkers(ctx);
     this.drawLostSheep(ctx);
     this.drawStuckTractor(ctx);
+    this.drawParkedImplements(ctx);
     this.drawTractor(ctx);
     this.drawNightOverlay(ctx);
 
@@ -3759,6 +3820,29 @@ export class FarmGame {
     };
   }
 
+  /**
+   * Tap a parked implement at the garage rack.
+   * Hit-test is in world space (screenToWorld) so map resize / viewScale stay correct.
+   * Equips slot.id directly — never IMPLEMENTS[index] from a parallel list.
+   */
+  private tryPickParkedAtScreen(sx: number, sy: number): boolean {
+    if (!this.ready || this.celebrating || this.gameDone) return false;
+    if (!this.nearGarage) return false;
+    const world = this.screenToWorld(sx, sy);
+    let best: { id: ImplementId; d: number } | null = null;
+    for (const slot of this.parkedSlots) {
+      // Skip the currently hitched tool so kids don't "pick" what's already on.
+      if (slot.id === this.selectedImplement) continue;
+      const d = Math.hypot(slot.x - world.x, slot.y - world.y);
+      if (d <= slot.r && (!best || d < best.d)) {
+        best = { id: slot.id, d };
+      }
+    }
+    if (!best) return false;
+    this.selectImplement(best.id);
+    return true;
+  }
+
   /** Tap a yellow ! to accept (required for night/sheep; optional for others). */
   private tryAcceptQuestAtScreen(sx: number, sy: number): boolean {
     if (!this.ready || this.celebrating || this.gameDone) return false;
@@ -3843,6 +3927,54 @@ export class FarmGame {
         ctx.arc(s.x, s.y - 40, 8 + Math.sin(this.pulse * 4) * 2, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
+    }
+  }
+
+  /** Draw hitch rack at garage — each pad labeled by implement id/sprite. */
+  private drawParkedImplements(ctx: CanvasRenderingContext2D): void {
+    if (!this.ready || this.parkedSlots.length === 0) return;
+    const needed = this.currentImplement();
+    for (const slot of this.parkedSlots) {
+      const equipped = slot.id === this.selectedImplement;
+      const isNeeded = slot.id === needed && !this.gameDone;
+      ctx.save();
+      ctx.translate(slot.x, slot.y);
+      // Pad
+      ctx.fillStyle = equipped ? 'rgba(40, 60, 45, 0.35)' : 'rgba(20, 30, 25, 0.55)';
+      ctx.strokeStyle = isNeeded
+        ? `rgba(129, 199, 132, ${0.65 + 0.25 * Math.sin(this.pulse * 4)})`
+        : equipped
+          ? 'rgba(255, 213, 79, 0.45)'
+          : 'rgba(255, 255, 255, 0.22)';
+      ctx.lineWidth = isNeeded ? 3.5 : 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 10, slot.r * 0.85, slot.r * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (equipped) {
+        ctx.globalAlpha = 0.35;
+      }
+      const img = this.implementImgs[slot.id];
+      const meta = IMPLEMENTS.find((i) => i.id === slot.id);
+      if (img) {
+        const maxDim = Math.max(img.width, img.height) || 1;
+        const dw = 52 * (img.width / maxDim);
+        const dh = 52 * (img.height / maxDim);
+        ctx.drawImage(img, -dw / 2, -dh / 2 - 6, dw, dh);
+      } else {
+        ctx.font = '28px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(meta?.emoji ?? '🔧', 0, -4);
+      }
+      ctx.globalAlpha = 1;
+      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = isNeeded ? '#c8e6c9' : '#eceff1';
+      ctx.fillText(meta?.shortLabel ?? slot.id, 0, slot.r * 0.42);
       ctx.restore();
     }
   }
