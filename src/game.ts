@@ -1274,6 +1274,7 @@ export class FarmGame {
       opt.textContent = `${i + 1}. ${m.title}`;
       this.missionPickEl.appendChild(opt);
     });
+    this.refreshMissionPickerLabels();
     this.missionPickEl.value = String(this.missionIndex);
     this.missionPickEl.addEventListener('change', () => {
       unlockSpeech();
@@ -1284,17 +1285,42 @@ export class FarmGame {
     });
   }
 
+  /** Mark finished missions in the picker; unlock wording when all done. */
+  private refreshMissionPickerLabels(): void {
+    if (!this.missionPickEl) return;
+    const replay = this.allMissionsDone();
+    const opts = this.missionPickEl.options;
+    for (let i = 0; i < MISSIONS.length && i < opts.length; i++) {
+      const m = MISSIONS[i];
+      const done = this.completedIds.has(m.id);
+      if (done && !replay) {
+        opts[i].textContent = `${i + 1}. ✓ ${m.title}`;
+      } else if (done && replay) {
+        opts[i].textContent = `${i + 1}. ↻ ${m.title}`;
+      } else {
+        opts[i].textContent = `${i + 1}. ${m.title}`;
+      }
+    }
+  }
+
   /** Jump to any mission (free play). Resets world progress for a clean start. */
   private jumpToMission(index: number): void {
     if (index < 0 || index >= MISSIONS.length) return;
+    const mid = MISSIONS[index].id;
+    // Completed stays done until every mission is finished — then replay unlocks.
+    if (!this.canStartMission(mid)) {
+      this.showToast('Najprej opravi vse ostale naloge!', 1800);
+      speakSl('Najprej opravi vse ostale naloge!');
+      if (this.missionPickEl) this.missionPickEl.value = String(this.missionIndex);
+      return;
+    }
     this.missionIndex = index;
     this.phaseIndex = 0;
     this.missionProgress = 0;
     this.celebrating = false;
     this.gameDone = false;
     this.wrongEquipFlash = 0;
-    // Replaying a finished quest clears only that star so ! can return after redo.
-    const mid = MISSIONS[index].id;
+    // Replay: clear only this mission's star so progress resets for a new try.
     this.completedIds.delete(mid);
     this.completedMissions = this.completedIds.size;
     this.resetWorldState();
@@ -1344,6 +1370,20 @@ export class FarmGame {
     return this.currentPhase().implement;
   }
 
+  /** True once every mission has been completed at least once this round. */
+  private allMissionsDone(): boolean {
+    return this.completedIds.size >= MISSIONS.length;
+  }
+
+  /**
+   * Incomplete missions are always startable.
+   * Completed ones stay locked until ALL are done — then replay is unlocked.
+   */
+  private canStartMission(id: MissionId): boolean {
+    if (!this.completedIds.has(id)) return true;
+    return this.allMissionsDone();
+  }
+
   private announceMission(): void {
     const m = this.currentMission();
     const p = this.currentPhase();
@@ -1358,11 +1398,12 @@ export class FarmGame {
     const p = this.currentPhase();
     if (this.gameDone) {
       this.missionTitleEl.textContent = 'Vse naloge so končane! 🎉';
-      this.missionHintEl.textContent = 'Odlično, mladi kmet! Pritisni Začni znova.';
+      this.missionHintEl.textContent =
+        'Lahko jih narediš še enkrat — izberi v meniju ali tapni ! na zemljevidu.';
       this.restartBtn.classList.add('visible');
       this.restartBtn.hidden = false;
-      this.missionNeedIcon.textContent = '★';
-      this.missionNeedLabel.textContent = 'Končano';
+      this.missionNeedIcon.textContent = '↻';
+      this.missionNeedLabel.textContent = 'Še enkrat';
     } else {
       const phaseNum = m.phases.length > 1 ? ` (${this.phaseIndex + 1}/${m.phases.length})` : '';
       this.missionTitleEl.textContent = `${m.title}${phaseNum}`;
@@ -1385,8 +1426,9 @@ export class FarmGame {
     }
 
     this.starsCountEl.textContent = String(this.completedIds.size || this.completedMissions);
+    this.refreshMissionPickerLabels();
     if (this.missionPickEl) {
-      const want = this.gameDone ? String(MISSIONS.length - 1) : String(this.missionIndex);
+      const want = String(this.missionIndex);
       if (this.missionPickEl.value !== want) this.missionPickEl.value = want;
       this.missionPickEl.disabled = false;
     }
@@ -2769,8 +2811,9 @@ export class FarmGame {
         this.rebuildImplementBar();
         this.updateHud();
         sfxSuccess();
-        this.showToast('Hura! Kmetija je urejena! 🌟', 4000);
-        speakSl('Hura! Kmetija je urejena!');
+        const allMsg = 'Vse naloge si opravil! Lahko jih narediš še enkrat.';
+        this.showToast(allMsg, 4000);
+        speakSl(allMsg);
       }
     }, 2300);
   }
@@ -3787,14 +3830,16 @@ export class FarmGame {
 
   /** Approaching a yellow ! auto-accepts that location-tied mission (except manualAccept). */
   private updateQuestAutoAccept(): void {
-    if (!this.ready || this.celebrating || this.gameDone) return;
+    if (!this.ready || this.celebrating) return;
     if (this.questAcceptCd > 0) return;
     const tx = this.tractor.x;
     const ty = this.tractor.y;
+    const replayRound = this.gameDone || this.allMissionsDone();
     for (let i = 0; i < MISSIONS.length; i++) {
       const m = MISSIONS[i];
-      if (this.completedIds.has(m.id)) continue;
-      if (i === this.missionIndex) continue; // already active
+      if (!this.canStartMission(m.id)) continue;
+      // Skip current active mission unless this is the all-done replay unlock.
+      if (!replayRound && i === this.missionIndex) continue;
       const pt = this.missionMarkerPoint(m);
       if (!pt) continue;
       const d = Math.hypot(pt.x - tx, pt.y - ty);
@@ -3850,14 +3895,15 @@ export class FarmGame {
 
   /** Tap a yellow ! to accept (required for night/sheep; optional for others). */
   private tryAcceptQuestAtScreen(sx: number, sy: number): boolean {
-    if (!this.ready || this.celebrating || this.gameDone) return false;
+    if (!this.ready || this.celebrating) return false;
     const world = this.screenToWorld(sx, sy);
     let bestI = -1;
     let bestD = 78; // world px tap radius around marker
+    const replayRound = this.gameDone || this.allMissionsDone();
     for (let i = 0; i < MISSIONS.length; i++) {
       const m = MISSIONS[i];
-      if (this.completedIds.has(m.id)) continue;
-      if (i === this.missionIndex) continue;
+      if (!this.canStartMission(m.id)) continue;
+      if (!replayRound && i === this.missionIndex) continue;
       const pt = this.missionMarkerPoint(m);
       if (!pt) continue;
       const d = Math.hypot(pt.x - world.x, pt.y - world.y);
@@ -3874,14 +3920,15 @@ export class FarmGame {
 
   /** WoW-style yellow ! (available) and ? (in progress). */
   private drawQuestMarkers(ctx: CanvasRenderingContext2D): void {
-    if (this.gameDone) return;
+    const replayRound = this.gameDone || this.allMissionsDone();
     const bob = Math.sin(this.pulse * 3.2) * 6;
     for (let i = 0; i < MISSIONS.length; i++) {
       const m = MISSIONS[i];
-      if (this.completedIds.has(m.id)) continue;
+      // Hide finished missions until the full-clear replay unlock.
+      if (!replayRound && this.completedIds.has(m.id)) continue;
       const pt = this.missionMarkerPoint(m);
       if (!pt) continue;
-      const active = i === this.missionIndex;
+      const active = !replayRound && i === this.missionIndex;
       const glyph = active ? '?' : '!';
       const x = pt.x;
       const y = pt.y + bob;
