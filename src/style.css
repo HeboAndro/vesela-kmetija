@@ -550,3 +550,128 @@ body {
     width: min(14.5rem, calc(100vw - 5.5rem));
   }
 }
+
+/* —— Farming Simulator–inspired HUD polish —— */
+.fs-quest-card {
+  border: 2px solid rgba(255, 213, 79, 0.55);
+  background: linear-gradient(180deg, rgba(22, 36, 28, 0.82), rgba(14, 24, 18, 0.78));
+}
+
+.quest-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-bottom: 0.15rem;
+}
+
+.quest-bang {
+  flex-shrink: 0;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 50%;
+  background: #ffd54f;
+  color: #4e342e;
+  font-weight: 900;
+  font-size: 1.05rem;
+  line-height: 1.55rem;
+  text-align: center;
+  box-shadow: 0 0 0 2px rgba(249, 168, 37, 0.55);
+}
+
+#mission-card #mission-title {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+#impl-chip {
+  position: absolute;
+  z-index: 21;
+  left: 50%;
+  bottom: max(0.55rem, calc(env(safe-area-inset-bottom) + 0.35rem));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(18, 28, 22, 0.78);
+  border: 2px solid rgba(255, 213, 79, 0.55);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.82rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  max-width: min(12rem, 46vw);
+}
+
+#impl-chip-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#impl-chip-icon .impl-thumb {
+  width: 1.4rem;
+  height: 1.4rem;
+  object-fit: contain;
+}
+
+#action-cluster {
+  position: absolute;
+  z-index: 22;
+  right: max(0.55rem, env(safe-area-inset-right));
+  bottom: max(0.55rem, calc(env(safe-area-inset-bottom) + 0.35rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  pointer-events: auto;
+}
+
+.action-btn {
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(18, 28, 22, 0.78);
+  color: #fff;
+  font-size: 1.25rem;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+  touch-action: manipulation;
+}
+
+.action-btn:active {
+  transform: scale(0.94);
+}
+
+@media (max-width: 1023px) {
+  #impl-chip {
+    bottom: max(6.6rem, calc(env(safe-area-inset-bottom) + 6.2rem));
+  }
+  #action-cluster {
+    bottom: max(6.6rem, calc(env(safe-area-inset-bottom) + 6.2rem));
+  }
+  #implement-bar {
+    right: max(3.8rem, calc(env(safe-area-inset-right) + 3.5rem));
+  }
+}
+
+@media (min-width: 1024px) {
+  #action-cluster {
+    bottom: max(1.2rem, env(safe-area-inset-bottom));
+    right: max(5.2rem, calc(env(safe-area-inset-right) + 4.8rem));
+    flex-direction: row;
+  }
+  #impl-chip {
+    left: auto;
+    right: max(0.7rem, env(safe-area-inset-right));
+    bottom: max(1.2rem, env(safe-area-inset-bottom));
+    transform: none;
+  }
+}

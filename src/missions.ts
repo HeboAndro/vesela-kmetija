@@ -2,12 +2,15 @@ export type MissionId =
   | 'grain'
   | 'hay'
   | 'gnojnica'
+  | 'fill_cistern'
   | 'koruza'
   | 'gozd'
   | 'feed'
   | 'wash'
   | 'yard'
   | 'night'
+  | 'sheep'
+  | 'rescue'
   | 'neighbor';
 
 export type ImplementId =
@@ -40,6 +43,11 @@ export interface Mission {
   /** Overall success when all phases done. */
   success: string;
   phases: MissionPhase[];
+  /**
+   * Primary map zone id for WoW ! / ? markers (location-tied).
+   * Secondary zones may be used mid-mission in game logic.
+   */
+  markerZone: string;
 }
 
 export const IMPLEMENTS: {
@@ -68,6 +76,7 @@ export const MISSIONS: Mission[] = [
     id: 'grain',
     title: 'Oranje in sejanje žita',
     success: 'Njiva je zorana in posejana!',
+    markerZone: 'rightField',
     phases: [
       {
         implement: 'plug',
@@ -84,6 +93,7 @@ export const MISSIONS: Mission[] = [
     id: 'hay',
     title: 'Cel dan sena',
     success: 'Seno je pokošeno, balirano, ovito in na dvorišču!',
+    markerZone: 'leftField',
     phases: [
       {
         implement: 'kosilnica',
@@ -115,6 +125,7 @@ export const MISSIONS: Mission[] = [
     id: 'gnojnica',
     title: 'Vožnja gnojnice na travnik',
     success: 'Travnik je pognojen z gnojnico!',
+    markerZone: 'manureField',
     phases: [
       {
         implement: 'gnojnica',
@@ -123,9 +134,27 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
+    id: 'fill_cistern',
+    title: 'Napolni cisterno',
+    success: 'Cisterna je polna in travnik pognojen!',
+    markerZone: 'slurryTank',
+    phases: [
+      {
+        implement: 'gnojnica',
+        hint: 'Gnojnica: pelji do cisterne/gnojniškega zbiralnika in napolni rezervoar.',
+        phaseDone: 'Cisterna je polna! Zdaj razvozimo po travniku.',
+      },
+      {
+        implement: 'gnojnica',
+        hint: 'Gnojnica: razvoz gnojnice po travniku (manureField).',
+      },
+    ],
+  },
+  {
     id: 'koruza',
     title: 'Koruza + silos',
     success: 'Koruza je požeta in silaža je na kupu!',
+    markerZone: 'cornField',
     phases: [
       {
         implement: 'sejalnik',
@@ -142,6 +171,7 @@ export const MISSIONS: Mission[] = [
     id: 'gozd',
     title: 'Gozdna veriga',
     success: 'Hlodi so na skladišču pri hlevu!',
+    markerZone: 'forest',
     phases: [
       {
         implement: 'vitla',
@@ -158,6 +188,7 @@ export const MISSIONS: Mission[] = [
     id: 'feed',
     title: 'Mešalnik krme',
     success: 'Bravo! Govedo in ovce so siti!',
+    markerZone: 'openBarn',
     phases: [
       {
         implement: 'krmilnik',
@@ -169,6 +200,7 @@ export const MISSIONS: Mission[] = [
     id: 'yard',
     title: 'Čiščenje dvorišča',
     success: 'Dvorišče je čisto!',
+    markerZone: 'barnYard',
     phases: [
       {
         implement: 'metla',
@@ -180,6 +212,7 @@ export const MISSIONS: Mission[] = [
     id: 'wash',
     title: 'Čiščenje traktorja',
     success: 'Traktor je čist!',
+    markerZone: 'washBay',
     phases: [
       {
         implement: null,
@@ -191,6 +224,7 @@ export const MISSIONS: Mission[] = [
     id: 'night',
     title: 'Nočna vožnja',
     success: 'Našli ste vsa izgubljena jagnjeta!',
+    markerZone: 'nightPaddock',
     phases: [
       {
         implement: 'prikolica',
@@ -199,9 +233,34 @@ export const MISSIONS: Mission[] = [
     ],
   },
   {
+    id: 'sheep',
+    title: 'Najdi 3 ovce',
+    success: 'Našli ste vse tri ovce!',
+    markerZone: 'nightPaddock',
+    phases: [
+      {
+        implement: null,
+        hint: 'Poišči 3 ovce na pašniku/ogradi (desno spodaj) — pelji blizu vsake.',
+      },
+    ],
+  },
+  {
+    id: 'rescue',
+    title: 'Reši traktor',
+    success: 'Stuck traktor je varno na dvorišču!',
+    markerZone: 'stuckTractor',
+    phases: [
+      {
+        implement: 'prikolica',
+        hint: 'Prikolica ali vitla: pelji do zataknjenega traktorja, priklopi in ga vleči na dvorišče pri garaži.',
+      },
+    ],
+  },
+  {
     id: 'neighbor',
     title: 'Dostava sosedu',
     success: 'Ovite bale so pri sosedu!',
+    markerZone: 'neighbor',
     phases: [
       {
         implement: 'prikolica',

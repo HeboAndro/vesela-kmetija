@@ -1,4 +1,4 @@
-import { IMPLEMENTS, MISSIONS, type ImplementId, type Mission } from './missions';
+import { IMPLEMENTS, MISSIONS, type ImplementId, type Mission, type MissionId } from './missions';
 import {
   sfxChop,
   sfxFeed,
@@ -391,6 +391,9 @@ export class FarmGame {
   private garageBtn: HTMLButtonElement;
   private missionNeedIcon: HTMLElement;
   private missionNeedLabel: HTMLElement;
+  private questBangEl: HTMLElement | null = null;
+  private implChipIcon: HTMLElement | null = null;
+  private implChipLabel: HTMLElement | null = null;
   private nearGarage = false;
 
   private mapImg: HTMLImageElement | null = null;
@@ -483,13 +486,29 @@ export class FarmGame {
   };
 
   private selectedImplement: ImplementId | null = 'plug';
-  private washBayImg: HTMLCanvasElement | null = null;
   private wrongEquipFlash = 0;
 
   private missionIndex = 0;
   private phaseIndex = 0;
   private missionProgress = 0;
   private completedMissions = 0;
+  /** WoW-style: which missions are finished (free pick + markers). */
+  private completedIds = new Set<MissionId>();
+  /** Auto-accept cooldown so we don't spam toasts. */
+  private questAcceptCd = 0;
+  /** Fill_cistern phase 1 progress 0..1 */
+  private cisternFill = 0;
+  /** Daytime sheep hunt targets. */
+  private lostSheep: { x: number; y: number; found: boolean }[] = [];
+  private static readonly SHEEP_FIND_COUNT = 3;
+  /** Stuck tractor for rescue mission (world coords). */
+  private stuckTractor = {
+    x: 1680,
+    y: 980,
+    angle: -0.4,
+    hooked: false,
+    delivered: false,
+  };
   private celebrating = false;
   private gameDone = false;
 
@@ -538,6 +557,24 @@ export class FarmGame {
     this.garageBtn = document.getElementById('garage-btn') as HTMLButtonElement;
     this.missionNeedIcon = document.getElementById('mission-need-icon')!;
     this.missionNeedLabel = document.getElementById('mission-need-label')!;
+    this.questBangEl = document.getElementById('quest-bang');
+    this.implChipIcon = document.getElementById('impl-chip-icon');
+    this.implChipLabel = document.getElementById('impl-chip-label');
+    const hornBtn = document.getElementById('action-horn');
+    hornBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      unlockSfx();
+      sfxSplash();
+      this.showToast('Beep beep!', 700);
+    });
+    const camBtn = document.getElementById('action-cam');
+    camBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Nudge camera briefly for kids “look around”
+      this.camNudge.x += Math.cos(this.tractor.angle) * 90;
+      this.camNudge.y += Math.sin(this.tractor.angle) * 90;
+      this.showToast('Pogled naprej', 700);
+    });
     this.garageBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -581,7 +618,6 @@ export class FarmGame {
         krmilnik,
         vitla,
         metla,
-        washBayRaw,
         ...tractorRaws
       ] = await Promise.all([
         loadImage('./mapa.png'),
@@ -598,7 +634,6 @@ export class FarmGame {
         loadImage('./krmilnik.png'),
         loadImage('./vitla.png'),
         loadImage('./metla.png'),
-        loadImage('./avtopralnica.png'),
         ...TRACTORS.map((t) => loadImage(t.src)),
       ]);
       this.mapImg = map;
@@ -638,7 +673,6 @@ export class FarmGame {
       this.implementImgs.krmilnik = keyCrop(krmilnik);
       this.implementImgs.vitla = keyCrop(vitla);
       this.implementImgs.metla = keyCrop(metla);
-      this.washBayImg = keyCrop(washBayRaw);
       this.ready = true;
       this.refreshImplementBarIcons();
       this.rebuildImplementBar();
@@ -678,8 +712,12 @@ export class FarmGame {
       // Open barn / feed alley (cows)
       { id: 'openBarn', x: 1140, y: 280, w: 480, h: 300 },
       { id: 'trough', x: 1240, y: 360, w: 160, h: 120 },
-      // Yellow CAR WASH gantry on pad (avtopralnica drawn here)
+      // Yellow CAR WASH gantry on pad (painted on mapa — no PNG overlay)
       { id: 'washBay', x: 1640, y: 380, w: 420, h: 320 },
+      // Slurry cistern / tank pad (fill mission)
+      { id: 'slurryTank', x: 1980, y: 700, w: 280, h: 200 },
+      // Stuck tractor spawn (rescue mission marker)
+      { id: 'stuckTractor', x: 1580, y: 900, w: 220, h: 180 },
       // Courtyard: metla + log/bale drop (dirt hub)
       { id: 'barnYard', x: 1100, y: 640, w: 460, h: 280 },
       { id: 'mudPath', x: 860, y: 720, w: 260, h: 160 },
@@ -834,6 +872,15 @@ export class FarmGame {
     this.tractorDirt = 1;
     this.washSfxCd = 0;
     this.slurrySfxCd = 0;
+    this.cisternFill = 0;
+    this.spawnLostSheep();
+    this.stuckTractor = {
+      x: 1680,
+      y: 980,
+      angle: -0.4,
+      hooked: false,
+      delivered: false,
+    };
 
     // Open barn: two rows of stalls — govedo + ovce mixed, alley in the middle
     const barn = this.zones.find((z) => z.id === 'openBarn')!;
@@ -1126,7 +1173,9 @@ export class FarmGame {
 
   /** On phase/mission start: rebuild all tools + soft needed hint; keep prior selection. */
   private prepareImplementsForPhase(): void {
-    if (this.currentImplement() === null) {
+    const m = this.currentMission();
+    // Wash needs no hitch; sheep hunt allows any hitch — don't strip tools.
+    if (this.currentImplement() === null && m.id !== 'sheep') {
       this.selectedImplement = null;
     }
     this.rebuildImplementBar();
@@ -1139,6 +1188,7 @@ export class FarmGame {
     this.phaseIndex = 0;
     this.missionProgress = 0;
     this.completedMissions = 0;
+    this.completedIds.clear();
     this.celebrating = false;
     this.gameDone = false;
     this.wrongEquipFlash = 0;
@@ -1180,7 +1230,10 @@ export class FarmGame {
     this.celebrating = false;
     this.gameDone = false;
     this.wrongEquipFlash = 0;
-    this.completedMissions = Math.min(this.completedMissions, index);
+    // Replaying a finished quest clears only that star so ! can return after redo.
+    const mid = MISSIONS[index].id;
+    this.completedIds.delete(mid);
+    this.completedMissions = this.completedIds.size;
     this.resetWorldState();
     const needed = this.currentImplement();
     this.selectedImplement = needed ?? 'plug';
@@ -1200,10 +1253,17 @@ export class FarmGame {
       btn.classList.toggle('active', id === this.selectedImplement);
       btn.classList.toggle('needed', id === needed && !this.gameDone);
     });
+    this.refreshImplChip();
   }
 
   private hasCorrectImplement(): boolean {
     const needed = this.currentImplement();
+    const m = this.currentMission();
+    if (m.id === 'rescue') {
+      return this.selectedImplement === 'prikolica' || this.selectedImplement === 'vitla';
+    }
+    // Sheep hunt: any hitch (or none) is fine — just drive near sheep.
+    if (m.id === 'sheep') return true;
     if (needed === null) return this.selectedImplement === null;
     return this.selectedImplement === needed;
   }
@@ -1247,6 +1307,12 @@ export class FarmGame {
         const found = this.lostLambs.filter((l) => l.found).length;
         const need = Math.max(1, this.lostLambs.length || FarmGame.NIGHT_LAMB_COUNT);
         this.missionHintEl.textContent = `${p.hint}  (${found}/${need})`;
+      } else if (m.id === 'sheep') {
+        const found = this.lostSheep.filter((s) => s.found).length;
+        const need = Math.max(1, this.lostSheep.length || FarmGame.SHEEP_FIND_COUNT);
+        this.missionHintEl.textContent = `${p.hint}  (${found}/${need})`;
+      } else if (m.id === 'fill_cistern' && this.phaseIndex === 0) {
+        this.missionHintEl.textContent = `${p.hint}  (${Math.round(this.cisternFill * 100)}%)`;
       } else {
         this.missionHintEl.textContent = p.hint;
       }
@@ -1255,7 +1321,7 @@ export class FarmGame {
       this.refreshMissionNeed();
     }
 
-    this.starsCountEl.textContent = String(this.completedMissions);
+    this.starsCountEl.textContent = String(this.completedIds.size || this.completedMissions);
     if (this.missionPickEl) {
       const want = this.gameDone ? String(MISSIONS.length - 1) : String(this.missionIndex);
       if (this.missionPickEl.value !== want) this.missionPickEl.value = want;
@@ -1264,8 +1330,42 @@ export class FarmGame {
 
     const local = this.gameDone ? 1 : this.missionProgress;
     this.progressFill.style.width = `${Math.round(local * 100)}%`;
+    if (this.questBangEl) {
+      this.questBangEl.textContent = this.gameDone ? '★' : '?';
+    }
+    this.refreshImplChip();
     this.refreshImplementBar();
     this.refreshGarageButton();
+  }
+
+  private refreshImplChip(): void {
+    if (!this.implChipIcon || !this.implChipLabel) return;
+    const id = this.selectedImplement;
+    if (id === null) {
+      this.implChipLabel.textContent = 'Brez';
+      this.implChipIcon.textContent = '🔓';
+      return;
+    }
+    const meta = IMPLEMENTS.find((i) => i.id === id);
+    this.implChipLabel.textContent = meta?.shortLabel ?? id;
+    const img = this.implementImgs[id];
+    if (img) {
+      const thumb = document.createElement('canvas');
+      thumb.width = 36;
+      thumb.height = 36;
+      const tctx = thumb.getContext('2d')!;
+      const scale = Math.min(36 / img.width, 36 / img.height) * 0.92;
+      const dw = img.width * scale;
+      const dh = img.height * scale;
+      tctx.drawImage(img, (36 - dw) / 2, (36 - dh) / 2, dw, dh);
+      const el = document.createElement('img');
+      el.src = thumb.toDataURL('image/png');
+      el.alt = '';
+      el.className = 'impl-thumb';
+      this.implChipIcon.replaceChildren(el);
+    } else {
+      this.implChipIcon.textContent = meta?.emoji ?? '🔧';
+    }
   }
 
   /** HUD chip: required implement emoji/sprite + name for current phase. */
@@ -1369,6 +1469,17 @@ export class FarmGame {
       const next = this.nearestUnfoundLamb();
       if (next) return { x: next.x, y: next.y, kind: 'zone' };
     }
+    if (m.id === 'sheep') {
+      const next = this.lostSheep.find((s) => !s.found);
+      if (next) return { x: next.x, y: next.y, kind: 'zone' };
+    }
+    if (m.id === 'rescue' && !this.stuckTractor.delivered) {
+      if (this.stuckTractor.hooked) {
+        const yard = this.zones.find((z) => z.id === 'barnYard');
+        if (yard) return { x: yard.x + yard.w / 2, y: yard.y + yard.h / 2, kind: 'zone' };
+      }
+      return { x: this.stuckTractor.x, y: this.stuckTractor.y, kind: 'zone' };
+    }
     const zone = this.currentMissionZone();
     if (!zone) return null;
     return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2, kind: 'zone' };
@@ -1384,6 +1495,10 @@ export class FarmGame {
       return this.zones.find((z) => z.id === 'leftField');
     }
     if (m.id === 'gnojnica') return this.zones.find((z) => z.id === 'manureField');
+    if (m.id === 'fill_cistern') {
+      if (this.phaseIndex === 0) return this.zones.find((z) => z.id === 'slurryTank');
+      return this.zones.find((z) => z.id === 'manureField');
+    }
     if (m.id === 'koruza') return this.zones.find((z) => z.id === 'cornField');
     if (m.id === 'gozd') {
       if (this.currentImplement() === 'prikolica' && this.trailerLogs > 0) {
@@ -1396,6 +1511,17 @@ export class FarmGame {
     if (m.id === 'yard') return this.zones.find((z) => z.id === 'barnYard');
     if (m.id === 'night') {
       return undefined; // arrow points at nearest unfound lamb
+    }
+    if (m.id === 'sheep') {
+      const next = this.lostSheep.find((s) => !s.found);
+      if (next) return undefined;
+      return this.zones.find((z) => z.id === 'nightPaddock');
+    }
+    if (m.id === 'rescue') {
+      if (this.stuckTractor.hooked && !this.stuckTractor.delivered) {
+        return this.zones.find((z) => z.id === 'barnYard') ?? this.zones.find((z) => z.id === 'garage');
+      }
+      return this.zones.find((z) => z.id === 'stuckTractor');
     }
     if (m.id === 'neighbor') return this.zones.find((z) => z.id === 'neighbor');
     return undefined;
@@ -1582,12 +1708,14 @@ export class FarmGame {
     if (this.wrongEquipFlash > 0) this.wrongEquipFlash -= dt;
     if (this.washSfxCd > 0) this.washSfxCd -= dt;
     if (this.slurrySfxCd > 0) this.slurrySfxCd -= dt;
+    if (this.questAcceptCd > 0) this.questAcceptCd -= dt;
 
     this.updateAnimals(dt);
     this.updateWanderers(dt);
     this.updateBirds(dt);
     this.updateParticles(dt);
     this.updateGarageProximity();
+    this.updateQuestAutoAccept();
 
     // Ease camera nudge back toward tractor-follow
     if (!this.pan.active) {
@@ -1775,6 +1903,12 @@ export class FarmGame {
       case 'gnojnica':
         if (impl === 'gnojnica') this.workSlurry();
         break;
+      case 'fill_cistern':
+        if (impl === 'gnojnica') {
+          if (this.phaseIndex === 0) this.workFillCistern();
+          else this.workSlurry();
+        }
+        break;
       case 'koruza':
         if (impl === 'sejalnik') this.workPlantCorn();
         else if (impl === 'kombajn') this.workChopCorn();
@@ -1795,10 +1929,128 @@ export class FarmGame {
       case 'night':
         this.workNightRescue();
         break;
+      case 'sheep':
+        this.workFindSheep();
+        break;
+      case 'rescue':
+        this.workRescueTractor();
+        break;
       case 'neighbor':
         if (impl === 'prikolica') this.workNeighborDelivery();
         break;
     }
+  }
+
+  private spawnLostSheep(): void {
+    const pad = this.zones.find((z) => z.id === 'nightPaddock');
+    const meadow = this.zones.find((z) => z.id === 'leftField');
+    const spots: { x: number; y: number }[] = [];
+    if (pad) {
+      spots.push(
+        { x: pad.x + pad.w * 0.25, y: pad.y + pad.h * 0.35 },
+        { x: pad.x + pad.w * 0.62, y: pad.y + pad.h * 0.55 },
+        { x: pad.x + pad.w * 0.4, y: pad.y + pad.h * 0.78 },
+      );
+    }
+    if (meadow && spots.length < 3) {
+      spots.push({ x: meadow.x + meadow.w * 0.5, y: meadow.y + meadow.h * 0.5 });
+    }
+    while (spots.length < FarmGame.SHEEP_FIND_COUNT) {
+      spots.push({ x: 1500 + spots.length * 80, y: 1200 });
+    }
+    this.lostSheep = spots.slice(0, FarmGame.SHEEP_FIND_COUNT).map((s) => ({
+      x: s.x,
+      y: s.y,
+      found: false,
+    }));
+  }
+
+  private workFillCistern(): void {
+    const tank = this.zones.find((z) => z.id === 'slurryTank');
+    if (!tank) return;
+    const inTank =
+      this.tractor.x > tank.x &&
+      this.tractor.x < tank.x + tank.w &&
+      this.tractor.y > tank.y &&
+      this.tractor.y < tank.y + tank.h;
+    if (inTank && this.moving) {
+      this.cisternFill = Math.min(1, this.cisternFill + 0.012);
+      if (this.slurrySfxCd <= 0) {
+        sfxSplash();
+        this.slurrySfxCd = 0.28;
+      }
+    }
+    this.missionProgress = this.cisternFill;
+    this.updateHud();
+    if (this.cisternFill >= 0.98) {
+      this.cisternFill = 1;
+      this.missionProgress = 1;
+      this.completePhase();
+    }
+  }
+
+  private workFindSheep(): void {
+    let found = 0;
+    for (const s of this.lostSheep) {
+      if (!s.found) {
+        const d = Math.hypot(s.x - this.tractor.x, s.y - this.tractor.y);
+        if (d < 95) {
+          s.found = true;
+          sfxFeed();
+          this.showToast('Ovca najdena!', 1000);
+        }
+      }
+      if (s.found) found++;
+    }
+    const need = Math.max(1, this.lostSheep.length);
+    this.missionProgress = found / need;
+    this.updateHud();
+    if (found >= need) this.completePhase();
+  }
+
+  private workRescueTractor(): void {
+    if (this.stuckTractor.delivered) {
+      this.missionProgress = 1;
+      this.completePhase();
+      return;
+    }
+    const st = this.stuckTractor;
+    const dist = Math.hypot(st.x - this.tractor.x, st.y - this.tractor.y);
+    if (!st.hooked) {
+      if (dist < 110) {
+        st.hooked = true;
+        sfxSuccess();
+        this.showToast('Priklop! Vleci traktor na dvorišče', 1800);
+        speakSl('Priklop! Vleci traktor na dvorišče.');
+      }
+      this.missionProgress = dist < 200 ? 0.25 : 0.05;
+      this.updateHud();
+      return;
+    }
+    // Tow: stuck tractor follows behind player
+    const follow = 95;
+    const ang = this.tractor.angle + Math.PI;
+    const tx = this.tractor.x + Math.cos(ang) * follow;
+    const ty = this.tractor.y + Math.sin(ang) * follow;
+    st.x += (tx - st.x) * 0.18;
+    st.y += (ty - st.y) * 0.18;
+    st.angle = this.tractor.angle;
+    const yard = this.zones.find((z) => z.id === 'barnYard') ?? this.zones.find((z) => z.id === 'garage');
+    if (yard) {
+      const inYard =
+        st.x > yard.x && st.x < yard.x + yard.w && st.y > yard.y && st.y < yard.y + yard.h;
+      const progressDist = Math.hypot(st.x - (yard.x + yard.w / 2), st.y - (yard.y + yard.h / 2));
+      this.missionProgress = Math.min(0.95, 0.35 + (1 - Math.min(1, progressDist / 900)) * 0.6);
+      if (inYard) {
+        st.delivered = true;
+        st.hooked = false;
+        this.missionProgress = 1;
+        this.updateHud();
+        this.completePhase();
+        return;
+      }
+    }
+    this.updateHud();
   }
 
   /** Sweep dirty barnYard cells with metla. */
@@ -2362,7 +2614,8 @@ export class FarmGame {
     if (this.celebrating) return;
     this.celebrating = true;
     const m = this.currentMission();
-    this.completedMissions = Math.min(MISSIONS.length, this.missionIndex + 1);
+    this.completedIds.add(m.id);
+    this.completedMissions = this.completedIds.size;
     this.missionProgress = 1;
     this.updateHud();
     sfxSuccess();
@@ -2371,8 +2624,12 @@ export class FarmGame {
 
     window.setTimeout(() => {
       this.celebrating = false;
-      if (this.missionIndex < MISSIONS.length - 1) {
-        this.missionIndex++;
+      // Prefer next incomplete mission; keep free-pick friendly.
+      const nextIdx = MISSIONS.findIndex((mm, i) => i > this.missionIndex && !this.completedIds.has(mm.id));
+      const fallback = MISSIONS.findIndex((mm) => !this.completedIds.has(mm.id));
+      const pick = nextIdx >= 0 ? nextIdx : fallback;
+      if (pick >= 0) {
+        this.missionIndex = pick;
         this.phaseIndex = 0;
         this.missionProgress = 0;
         this.prepareImplementsForPhase();
@@ -2444,6 +2701,9 @@ export class FarmGame {
     this.drawParticles(ctx);
     this.drawBirds(ctx);
     this.drawMissionHighlight(ctx);
+    this.drawQuestMarkers(ctx);
+    this.drawLostSheep(ctx);
+    this.drawStuckTractor(ctx);
     this.drawTractor(ctx);
     this.drawNightOverlay(ctx);
 
@@ -2934,25 +3194,7 @@ export class FarmGame {
     if (!bay) return;
     const cx = bay.x + bay.w / 2;
     const cy = bay.y + bay.h / 2;
-    ctx.fillStyle = 'rgba(80, 100, 120, 0.08)';
-    ctx.fillRect(bay.x, bay.y, bay.w, bay.h);
-    if (this.washBayImg) {
-      const img = this.washBayImg;
-      const maxW = bay.w * 0.95;
-      const maxH = bay.h * 0.95;
-      const sc = Math.min(maxW / img.width, maxH / img.height);
-      const dw = img.width * sc;
-      const dh = img.height * sc;
-      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
-    } else {
-      ctx.strokeStyle = 'rgba(180, 220, 255, 0.35)';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(bay.x + 4, bay.y + 4, bay.w - 8, bay.h - 8);
-      ctx.fillStyle = 'rgba(255, 220, 80, 0.85)';
-      ctx.font = '700 18px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('AVTOPRALNICA', cx, bay.y + 28);
-    }
+    // Painted wash on mapa is enough — no avtopralnica.png overlay.
     if (this.currentMission().id === 'wash' && this.tractorDirt > 0.02) {
       for (let i = 0; i < 6; i++) {
         const bx = cx - 50 + i * 20;
@@ -3397,6 +3639,132 @@ export class FarmGame {
       ctx.beginPath();
       ctx.ellipse(lx, ly, 3.2, 2.2, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** World anchor for a mission's WoW bang / query marker. */
+  private missionMarkerPoint(m: Mission): { x: number; y: number } | null {
+    if (m.id === 'rescue' && !this.stuckTractor.delivered) {
+      return { x: this.stuckTractor.x, y: this.stuckTractor.y - 70 };
+    }
+    const z = this.zones.find((zz) => zz.id === m.markerZone);
+    if (!z) return null;
+    return { x: z.x + z.w / 2, y: z.y + 36 };
+  }
+
+  /** Approaching a yellow ! auto-accepts that location-tied mission. */
+  private updateQuestAutoAccept(): void {
+    if (!this.ready || this.celebrating || this.gameDone) return;
+    if (this.questAcceptCd > 0) return;
+    const tx = this.tractor.x;
+    const ty = this.tractor.y;
+    for (let i = 0; i < MISSIONS.length; i++) {
+      const m = MISSIONS[i];
+      if (this.completedIds.has(m.id)) continue;
+      if (i === this.missionIndex) continue; // already active
+      const pt = this.missionMarkerPoint(m);
+      if (!pt) continue;
+      const d = Math.hypot(pt.x - tx, pt.y - ty);
+      if (d < 130) {
+        this.questAcceptCd = 2.2;
+        this.jumpToMission(i);
+        return;
+      }
+    }
+  }
+
+  /** WoW-style yellow ! (available) and ? (in progress). */
+  private drawQuestMarkers(ctx: CanvasRenderingContext2D): void {
+    if (this.gameDone) return;
+    const bob = Math.sin(this.pulse * 3.2) * 6;
+    for (let i = 0; i < MISSIONS.length; i++) {
+      const m = MISSIONS[i];
+      if (this.completedIds.has(m.id)) continue;
+      const pt = this.missionMarkerPoint(m);
+      if (!pt) continue;
+      const active = i === this.missionIndex;
+      const glyph = active ? '?' : '!';
+      const x = pt.x;
+      const y = pt.y + bob;
+      ctx.save();
+      // Stem / pin
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + 28, 10, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Yellow disc
+      ctx.fillStyle = '#ffd54f';
+      ctx.strokeStyle = '#f9a825';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#5d4037';
+      ctx.font = 'bold 28px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(glyph, x, y + 1);
+      // Soft glow
+      ctx.globalAlpha = 0.35 + 0.2 * Math.sin(this.pulse * 4);
+      ctx.strokeStyle = '#fff59d';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, 28, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  private drawLostSheep(ctx: CanvasRenderingContext2D): void {
+    if (this.currentMission().id !== 'sheep' && !this.lostSheep.some((s) => !s.found)) {
+      // Still draw unfound sheep lightly if mission not active? Only when sheep mission or nearby.
+    }
+    const show = this.currentMission().id === 'sheep' || !this.completedIds.has('sheep');
+    if (!show) return;
+    for (const s of this.lostSheep) {
+      if (s.found && this.currentMission().id !== 'sheep') continue;
+      ctx.save();
+      ctx.globalAlpha = s.found ? 0.35 : 1;
+      this.drawSheep(ctx, s.x, s.y, 0.2 + Math.sin(this.pulse + s.x) * 0.05);
+      if (!s.found) {
+        ctx.fillStyle = 'rgba(255, 235, 59, 0.55)';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y - 40, 8 + Math.sin(this.pulse * 4) * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  private drawStuckTractor(ctx: CanvasRenderingContext2D): void {
+    if (this.completedIds.has('rescue') && this.stuckTractor.delivered) return;
+    const st = this.stuckTractor;
+    if (st.delivered && this.currentMission().id !== 'rescue') return;
+    ctx.save();
+    ctx.translate(st.x, st.y);
+    ctx.rotate(st.angle);
+    const size = TRACTOR_DRAW * 0.92;
+    // Simple red/orange "other" tractor (distinct from player sprites)
+    ctx.fillStyle = '#ef6c00';
+    roundRectPath(ctx, -size * 0.42, -size * 0.22, size * 0.84, size * 0.4, 8);
+    ctx.fill();
+    ctx.fillStyle = '#37474f';
+    roundRectPath(ctx, -size * 0.12, -size * 0.42, size * 0.38, size * 0.28, 6);
+    ctx.fill();
+    ctx.fillStyle = '#212121';
+    ctx.beginPath();
+    ctx.ellipse(-size * 0.28, size * 0.22, size * 0.16, size * 0.16, 0, 0, Math.PI * 2);
+    ctx.ellipse(size * 0.3, size * 0.22, size * 0.2, size * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (st.hooked) {
+      ctx.strokeStyle = '#ffd54f';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(size * 0.45, 0);
+      ctx.lineTo(size * 0.85, 0);
+      ctx.stroke();
     }
     ctx.restore();
   }
